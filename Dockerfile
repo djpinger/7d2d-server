@@ -16,8 +16,7 @@ RUN dpkg --add-architecture i386 && \
 # Install SteamCMD manually (avoids Ubuntu package EULA prompt)
 RUN mkdir -p /opt/steamcmd && \
     curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | \
-    tar zxvf - -C /opt/steamcmd && \
-    ln -s /opt/steamcmd/steamcmd.sh /usr/local/bin/steamcmd
+    tar zxvf - -C /opt/steamcmd
 
 # Python venv for the panel
 RUN python3 -m venv /opt/panel
