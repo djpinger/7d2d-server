@@ -236,6 +236,21 @@ def _server_installed():
     return (SERVERFILES_PATH / "7DaysToDieServer.x86_64").exists()
 
 
+def _installed_branch() -> str:
+    """Read the branch from the SteamCMD app manifest. Returns 'public' if not found."""
+    manifest = SERVERFILES_PATH / "steamapps" / "appmanifest_294420.acf"
+    if not manifest.exists():
+        return GAME_BRANCH
+    try:
+        text = manifest.read_text()
+        m = re.search(r'"betakey"\s+"([^"]*)"', text)
+        if m and m.group(1):
+            return m.group(1)
+    except Exception:
+        pass
+    return "public"
+
+
 # ─── Player cache ─────────────────────────────────────────────────────────────
 
 _player_cache      = {}
@@ -616,7 +631,8 @@ def api_server_status():
             stats["fps"]     = round(d.get("fps", 0), 1)
             stats["heap_mb"] = round(d.get("memUsed", 0) / 1024 / 1024, 0)
 
-    return jsonify({"state": state, "installed": _server_installed(), "pid": pid, **stats})
+    return jsonify({"state": state, "installed": _server_installed(),
+                    "branch": _installed_branch(), "pid": pid, **stats})
 
 
 @app.route("/api/server/start", methods=["POST"])
@@ -646,6 +662,12 @@ def api_server_install():
     body   = request.get_json() or {}
     branch = body.get("branch", GAME_BRANCH)
     return jsonify(server_install(branch))
+
+
+@app.route("/api/server/verify", methods=["POST"])
+@login_required
+def api_server_verify():
+    return jsonify(server_install(branch=_installed_branch()))
 
 
 # ─── Console ──────────────────────────────────────────────────────────────────

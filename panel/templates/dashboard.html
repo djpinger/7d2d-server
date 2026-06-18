@@ -69,13 +69,19 @@
         </div>
         <hr style="border-color:#2d3f57">
         <div class="section-title mt-2"><i class="bi bi-download me-1"></i>Install / Update</div>
-        <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex gap-2 align-items-center mb-1">
           <select id="branchSelect" class="form-select form-select-sm" style="max-width:220px">
             <option value="public">public (stable)</option>
             <option value="latest_experimental">latest_experimental</option>
           </select>
           <button class="btn btn-outline-info btn-sm" id="btnInstall" onclick="installServer()">
             <i class="bi bi-cloud-download me-1"></i>Install/Update
+          </button>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <small class="text-muted">Installed: <span id="installedBranch" class="text-info">—</span></small>
+          <button class="btn btn-outline-secondary btn-sm" id="btnVerify" onclick="verifyFiles()">
+            <i class="bi bi-shield-check me-1"></i>Verify Files
           </button>
         </div>
         <div class="form-text mt-1">Stops server first if running. Streams output to console.</div>
@@ -141,6 +147,8 @@ function updateUI(s) {
 
   document.getElementById('notInstalled').style.display = s.installed ? 'none' : 'block';
   document.getElementById('statsRow').style.display    = s.installed ? ''     : 'none';
+  document.getElementById('btnVerify').disabled        = busy || !s.installed || running;
+  document.getElementById('installedBranch').textContent = s.branch || '—';
 
   if (busy) badge.classList.add('pulse');
   else      badge.classList.remove('pulse');
@@ -152,6 +160,16 @@ async function serverAction(action) {
     const j = await r.json();
     if (j.error) toast(j.error, false);
     else toast(action === 'restart' ? 'Restarting…' : action === 'start' ? 'Starting…' : 'Stopping…');
+  } catch(e) { toast(e.message, false); }
+}
+
+async function verifyFiles() {
+  if (!confirm('Verify all game files against Steam? This re-downloads anything missing or corrupt.')) return;
+  try {
+    const r = await fetch('/api/server/verify', {method: 'POST'});
+    const j = await r.json();
+    if (j.error) toast(j.error, false);
+    else toast('Verification started — watch the Console page for progress.');
   } catch(e) { toast(e.message, false); }
 }
 
