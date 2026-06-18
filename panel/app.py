@@ -105,7 +105,6 @@ def _proc_reader(proc):
         pass
     finally:
         with _server_lock:
-            global _server_state
             if _server_state not in ("stopping", "stopped", "installing"):
                 _server_state = "stopped"
         _log_push("Server process exited.", "Warning", "panel")
