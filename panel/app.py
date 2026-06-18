@@ -192,6 +192,7 @@ def server_install(branch=None):
         global _server_state
         SERVERFILES_PATH.mkdir(parents=True, exist_ok=True)
         args = [str(STEAMCMD),
+                "+@sSteamCmdForcePlatformType", "linux",
                 "+force_install_dir", str(SERVERFILES_PATH),
                 "+login", "anonymous",
                 "+app_update", "294420"]
