@@ -9,6 +9,7 @@ RUN dpkg --add-architecture i386 && \
         python3 python3-pip python3-venv \
         lib32gcc-s1 \
         curl \
+        gosu \
         locales \
     && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
@@ -26,11 +27,11 @@ RUN /opt/panel/bin/pip install --no-cache-dir -r /opt/panel/requirements.txt
 # Panel application
 COPY panel/ /opt/panel/app/
 
-# Startup script
+# Startup script (runs as root, drops to PUID:PGID at runtime)
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Default volume mount points
+# Default volume mount points — entrypoint will chown to runtime PUID:PGID
 RUN mkdir -p /serverfiles /config /gamedata
 
 EXPOSE 8090 26900 26901 26902 8080 8081

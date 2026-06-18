@@ -29,6 +29,7 @@ WORLDS_ROOT        = Path(os.environ.get("WORLDS_ROOT",    "/gamedata/GeneratedW
 TELEPORT_DATA_PATH = Path(os.environ.get("TELEPORT_DATA_PATH", "/config/teleport_data.json"))
 SERVERFILES_PATH   = Path(os.environ.get("SERVERFILES_PATH",   "/serverfiles"))
 STEAMCMD           = Path(os.environ.get("STEAMCMD_PATH",       "/opt/steamcmd/steamcmd.sh"))
+LOG_DIR            = Path(os.environ.get("LOG_DIR",             "/logs"))
 GAME_BRANCH        = os.environ.get("GAME_BRANCH",    "public")
 GAME_API_URL       = os.environ.get("GAME_API_URL",   "http://localhost:8080")
 GAME_API_TOKEN     = os.environ.get("GAME_API_TOKEN_NAME", "")
@@ -66,6 +67,34 @@ def _parse_raw(raw: str):
     return raw, "Log"
 
 
+# ─── Server log file ──────────────────────────────────────────────────────────
+
+_log_file      = None
+_log_file_lock = threading.Lock()
+
+def _rotate_server_log():
+    """Archive the previous server.log to a dated name, open a fresh one."""
+    global _log_file
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    current = LOG_DIR / "server.log"
+    if current.exists() and current.stat().st_size > 0:
+        ts = datetime.fromtimestamp(current.stat().st_mtime).strftime("%Y-%m-%d-%H%M%S")
+        current.rename(LOG_DIR / f"server-{ts}.log")
+    with _log_file_lock:
+        _log_file = current.open("w", buffering=1, encoding="utf-8")
+
+
+def _close_server_log():
+    global _log_file
+    with _log_file_lock:
+        if _log_file:
+            try:
+                _log_file.close()
+            except Exception:
+                pass
+            _log_file = None
+
+
 # ─── Server process management ────────────────────────────────────────────────
 
 _server_proc  = None
@@ -81,6 +110,9 @@ def _proc_reader(proc):
             raw = raw.rstrip()
             if not raw:
                 continue
+            with _log_file_lock:
+                if _log_file:
+                    _log_file.write(raw + "\n")
             msg, typ = _parse_raw(raw)
             _log_push(msg, typ)
 
@@ -89,6 +121,21 @@ def _proc_reader(proc):
                 with _server_lock:
                     if _server_state == "starting":
                         _server_state = "running"
+
+            # Fallback: if web dashboard is disabled the above line never fires;
+            # use StartGame done so the state doesn't get stuck at "starting"
+            if _server_state == "starting" and "StartGame done" in msg:
+                with _server_lock:
+                    if _server_state == "starting":
+                        _server_state = "running"
+
+            # Warn loudly when the API is disabled — panel features won't work
+            if "Webserver not started, WebDashboardEnabled set to false" in msg:
+                _log_push(
+                    "WARNING: WebDashboardEnabled is false — the panel cannot reach the game API. "
+                    "Go to Config → Network, enable Web Dashboard, set port to 8080, then restart.",
+                    "Error", "panel"
+                )
 
             # Chat bot
             cm = _CHAT_RE.search(msg)
@@ -105,6 +152,7 @@ def _proc_reader(proc):
     except Exception:
         pass
     finally:
+        _close_server_log()
         with _server_lock:
             if _server_state not in ("stopping", "stopped", "installing"):
                 _server_state = "stopped"
@@ -121,6 +169,7 @@ def server_start():
         exe = SERVERFILES_PATH / "7DaysToDieServer.x86_64"
         if not exe.exists():
             return {"error": "Server not installed — use Install/Update first"}
+        _rotate_server_log()
         _server_state = "starting"
 
     _log_push("Starting server…", source="panel")
@@ -245,7 +294,7 @@ def _installed_branch() -> str:
         return GAME_BRANCH
     try:
         text = manifest.read_text()
-        m = re.search(r'"betakey"\s+"([^"]*)"', text)
+        m = re.search(r'"betakey"\s+"([^"]*)"', text, re.IGNORECASE)
         if m and m.group(1):
             return m.group(1)
     except Exception:
@@ -467,6 +516,142 @@ def game_api_post(path, body=None, timeout=10):
         return {"error": str(e)}
 
 
+# ─── Config metadata ──────────────────────────────────────────────────────────
+
+_SECTIONS = [
+    {"id": "server",      "label": "Server",      "icon": "bi-server",
+     "fields": ["ServerName","ServerDescription","ServerWebsiteURL","ServerPassword",
+                "ServerLoginConfirmationText","Region","Language"]},
+    {"id": "network",     "label": "Network",     "icon": "bi-wifi",
+     "fields": ["ServerPort","ServerVisibility","ServerMaxPlayerCount","NetworkPingLimit",
+                "ServerReservedSlots","ServerReservedSlotsPermission",
+                "ServerAdminSlots","ServerAdminSlotsPermission",
+                "WebDashboardEnabled","WebDashboardPort",
+                "EACEnabled","BattlEye","HideCommandExecutionLog",
+                "MaxUncoveredMapChunks","TerminalWindowEnabled"]},
+    {"id": "gameplay",    "label": "Gameplay",    "icon": "bi-joystick",
+     "fields": ["GameWorld","WorldGenSeed","WorldGenSize","GameName","GameMode",
+                "PlayerKillingMode","BuildCreate","DayNightLength","DayLightLength",
+                "DeathPenalty","DropOnDeath","DropOnQuit",
+                "BlockDamagePlayer","BlockDamageAI","BlockDamageAIBM",
+                "XPMultiplier","PartySharedKillRange","PlayerSafeZoneLevel","PlayerSafeZoneHours",
+                "UserDataFolder","SaveGameFolder"]},
+    {"id": "zombies",     "label": "Zombies",     "icon": "bi-virus",
+     "fields": ["EnemyDifficulty","EnemySpawnMode","MaxSpawnedZombies",
+                "MaxSpawnedAnimals","ServerMaxAllowedViewDistance","MaxQueuedMeshLayers"]},
+    {"id": "sandbox",     "label": "Sandbox",     "icon": "bi-sliders2",
+     "fields": ["SandboxCode"]},
+    {"id": "performance", "label": "Performance", "icon": "bi-cpu",
+     "fields": ["CpuUsage","ServerCpuCount","RootDataFolder"]},
+    {"id": "mods",        "label": "Mods",        "icon": "bi-puzzle",
+     "fields": ["ModsEnabled","ModList"]},
+]
+
+_FIELD_TYPES = {
+    "WebDashboardEnabled": "boolean",
+    "WebDashboardPort": "number",
+    "EACEnabled": "boolean", "BattlEye": "boolean", "TerminalWindowEnabled": "boolean",
+    "BuildCreate": "boolean", "ModsEnabled": "boolean", "HideCommandExecutionLog": "boolean",
+    "SandboxCode": "sandbox_code",
+    "ServerPort": "number", "ServerMaxPlayerCount": "number", "NetworkPingLimit": "number",
+    "ServerReservedSlots": "number", "ServerReservedSlotsPermission": "number",
+    "ServerAdminSlots": "number", "ServerAdminSlotsPermission": "number",
+    "MaxUncoveredMapChunks": "number",
+    "DayNightLength": "number", "DayLightLength": "number", "XPMultiplier": "number",
+    "PartySharedKillRange": "number", "PlayerSafeZoneLevel": "number",
+    "PlayerSafeZoneHours": "number", "MaxSpawnedZombies": "number",
+    "MaxSpawnedAnimals": "number", "ServerMaxAllowedViewDistance": "number",
+    "MaxQueuedMeshLayers": "number", "ServerCpuCount": "number",
+    "ServerVisibility": "select", "Region": "select", "GameMode": "select",
+    "GameWorld": "select", "WorldGenSize": "select",
+    "PlayerKillingMode": "select", "DeathPenalty": "select", "DropOnDeath": "select",
+    "DropOnQuit": "select", "BlockDamagePlayer": "select", "BlockDamageAI": "select",
+    "BlockDamageAIBM": "select", "EnemyDifficulty": "select", "EnemySpawnMode": "select",
+    "CpuUsage": "select",
+}
+
+_PCTS = [{"value": str(v), "label": f"{v}%"} for v in (0,25,50,75,100,150,200)]
+_DROP = [{"value":"0","label":"Nothing"},{"value":"1","label":"Everything"},
+         {"value":"2","label":"Toolbelt"},{"value":"3","label":"Backpack"},{"value":"4","label":"Delete All"}]
+
+_FIELD_META = {
+    "ServerName":                    {"label": "Server Name"},
+    "ServerDescription":             {"label": "Description"},
+    "ServerWebsiteURL":              {"label": "Website URL"},
+    "ServerPassword":                {"label": "Join Password"},
+    "ServerLoginConfirmationText":   {"label": "Login Message"},
+    "Region":                        {"label": "Region", "options": ["NorthAmericaEast","NorthAmericaWest","CentralAmerica","SouthAmerica","Europe","Russia","Asia","MiddleEast","Africa","Oceania"]},
+    "Language":                      {"label": "Language"},
+    "ServerPort":                    {"label": "Server Port"},
+    "ServerVisibility":              {"label": "Visibility", "options": [{"value":"2","label":"Public"},{"value":"1","label":"Friends Only"},{"value":"0","label":"Not Listed"}]},
+    "ServerMaxPlayerCount":          {"label": "Max Players"},
+    "NetworkPingLimit":              {"label": "Max Ping (ms)"},
+    "ServerReservedSlots":           {"label": "Reserved Slots"},
+    "ServerReservedSlotsPermission": {"label": "Reserved Slots Permission"},
+    "ServerAdminSlots":              {"label": "Admin Slots"},
+    "ServerAdminSlotsPermission":    {"label": "Admin Slots Permission"},
+    "WebDashboardEnabled":           {"label": "Web Dashboard / API", "fix_when_false": True},
+    "WebDashboardPort":              {"label": "Web Dashboard Port"},
+    "EACEnabled":                    {"label": "Easy Anti-Cheat"},
+    "BattlEye":                      {"label": "BattlEye"},
+    "HideCommandExecutionLog":       {"label": "Hide Command Log"},
+    "MaxUncoveredMapChunks":         {"label": "Max Uncovered Map Chunks"},
+    "TerminalWindowEnabled":         {"label": "Terminal Window"},
+    "GameWorld":                     {"label": "World"},
+    "WorldGenSeed":                  {"label": "World Seed"},
+    "WorldGenSize":                  {"label": "World Size", "options": [
+                                       {"value": "6144",  "label": "6144 (6k — ~36 km²)"},
+                                       {"value": "8192",  "label": "8192 (8k — ~64 km²)"},
+                                       {"value": "10240", "label": "10240 (10k — ~100 km²)"},
+                                   ]},
+    "GameName":                      {"label": "Save Name"},
+    "GameMode":                      {"label": "Game Mode", "options": ["GameModeSurvival"]},
+    "PlayerKillingMode":             {"label": "Player Killing", "options": [{"value":"0","label":"No Killing"},{"value":"1","label":"Kill Allies Only"},{"value":"2","label":"Kill Strangers Only"},{"value":"3","label":"Kill Everyone"}]},
+    "BuildCreate":                   {"label": "Creative Mode"},
+    "DayNightLength":                {"label": "Day Length (real minutes)"},
+    "DayLightLength":                {"label": "Daylight Hours (in-game)"},
+    "DeathPenalty":                  {"label": "Death Penalty", "options": [{"value":"0","label":"None"},{"value":"1","label":"Vanilla"},{"value":"2","label":"Streak"},{"value":"3","label":"Perma-Death"}]},
+    "DropOnDeath":                   {"label": "Drop On Death", "options": _DROP},
+    "DropOnQuit":                    {"label": "Drop On Quit", "options": _DROP},
+    "BlockDamagePlayer":             {"label": "Block Damage (Player)", "options": _PCTS},
+    "BlockDamageAI":                 {"label": "Block Damage (AI)", "options": _PCTS},
+    "BlockDamageAIBM":               {"label": "Block Damage (Blood Moon)", "options": _PCTS},
+    "XPMultiplier":                  {"label": "XP Multiplier"},
+    "PartySharedKillRange":          {"label": "Party Kill Share Range"},
+    "PlayerSafeZoneLevel":           {"label": "Safe Zone Level"},
+    "PlayerSafeZoneHours":           {"label": "Safe Zone Hours"},
+    "UserDataFolder":                {"label": "User Data Folder"},
+    "SaveGameFolder":                {"label": "Save Game Folder"},
+    "EnemyDifficulty":               {"label": "Enemy Difficulty", "options": [{"value":"0","label":"Normal"},{"value":"1","label":"Feral"}]},
+    "EnemySpawnMode":                {"label": "Enemy Spawning", "options": [{"value":"False","label":"Off"},{"value":"True","label":"On"}]},
+    "MaxSpawnedZombies":             {"label": "Max Spawned Zombies"},
+    "MaxSpawnedAnimals":             {"label": "Max Spawned Animals"},
+    "ServerMaxAllowedViewDistance":  {"label": "Max View Distance"},
+    "MaxQueuedMeshLayers":           {"label": "Max Mesh Queue Layers"},
+    "SandboxCode":                   {"label": "Sandbox Code"},
+    "CpuUsage":                      {"label": "CPU Usage", "options": [{"value":"Default","label":"Default"},{"value":"Minimal","label":"Minimal"},{"value":"High","label":"High"},{"value":"Aggressive","label":"Aggressive"}]},
+    "ServerCpuCount":                {"label": "Server CPU Count"},
+    "RootDataFolder":                {"label": "Root Data Folder"},
+    "ModsEnabled":                   {"label": "Mods Enabled"},
+    "ModList":                       {"label": "Mod List"},
+}
+
+_FIELD_DESCRIPTIONS = {
+    "SandboxCode":          "Generate in-game via New Game → Advanced → Sandbox Options → Copy Code, or use the Sandbox tab to build and reset the code visually.",
+    "ServerPassword":       "Leave blank for no password",
+    "WorldGenSize":         "Only applies when GameWorld = RWG",
+    "WebDashboardEnabled":  "Required for the panel to communicate with the game server (players, commands, stats). Must be true.",
+    "WebDashboardPort":     "Must match the port mapped in docker-compose.yml (default 8080).",
+    "EACEnabled":           "Easy Anti-Cheat — disable for mods that require it",
+    "GameName":             "Also used as the save directory name",
+    "DayNightLength":       "Real-time minutes per in-game day",
+    "DayLightLength":       "In-game hours of daylight (max 24)",
+    "PlayerSafeZoneLevel":  "Player level below which the safe zone applies (0 = disabled)",
+    "WorldGenSeed":         "Any text or number — determines the generated map layout",
+    "XPMultiplier":         "100 = default, 200 = double XP",
+}
+
+
 # ─── Config XML helpers ───────────────────────────────────────────────────────
 
 def parse_config():
@@ -620,11 +805,16 @@ def api_server_status():
         state = _server_state
     pid = proc.pid if proc and proc.poll() is None else None
 
+    cfg, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
+    api_enabled = cfg.get("WebDashboardEnabled", "false").lower() == "true"
+
     stats = {}
+    api_ok = False
     if state == "running":
         gs = game_api_get("/api/gamestats")
         ss = game_api_get("/api/serverstats")
         if "data" in gs:
+            api_ok = True
             d = gs["data"]
             stats["day"]     = d.get("gametime", {}).get("days")
             stats["players"] = d.get("players")
@@ -634,7 +824,8 @@ def api_server_status():
             stats["heap_mb"] = round(d.get("memUsed", 0) / 1024 / 1024, 0)
 
     return jsonify({"state": state, "installed": _server_installed(),
-                    "branch": _installed_branch(), "pid": pid, **stats})
+                    "branch": _installed_branch(), "pid": pid,
+                    "api_enabled": api_enabled, "api_ok": api_ok, **stats})
 
 
 @app.route("/api/server/start", methods=["POST"])
@@ -725,38 +916,39 @@ def api_run_command():
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
-_CONFIG_SECTIONS = {
-    "Server":      ["ServerName","ServerDescription","ServerWebsiteURL","ServerPassword",
-                    "ServerLoginConfirmationText","Region","Language"],
-    "Network":     ["ServerPort","ServerVisibility","NetworkPingLimit","ServerMaxPlayerCount",
-                    "ServerReservedSlots","ServerReservedSlotsPermission","ServerAdminSlots",
-                    "ServerAdminSlotsPermission","HideCommandExecutionLog","MaxUncoveredMapChunks",
-                    "EACEnabled","BattlEye","TerminalWindowEnabled"],
-    "Gameplay":    ["GameWorld","WorldGenSeed","WorldGenSize","GameName","GameMode",
-                    "PlayerKillingMode","BuildCreate","DayNightLength","DayLightLength",
-                    "DeathPenalty","DropOnDeath","DropOnQuit","UserDataFolder",
-                    "SaveGameFolder","BlockDamagePlayer","BlockDamageAI","BlockDamageAIBM",
-                    "XPMultiplier","PartySharedKillRange","PlayerSafeZoneLevel",
-                    "PlayerSafeZoneHours"],
-    "Zombies":     ["EnemyDifficulty","EnemySpawnMode","MaxSpawnedZombies","MaxSpawnedAnimals",
-                    "ServerMaxAllowedViewDistance","MaxQueuedMeshLayers"],
-    "Sandbox":     ["SandboxCode"],
-    "Performance": ["CpuUsage","ServerCpuCount","RootDataFolder"],
-    "Mods":        ["ModsEnabled","ModList"],
-}
+def _available_worlds():
+    """Scan installed server files for world directories; fall back to known defaults."""
+    worlds_dir = SERVERFILES_PATH / "Data" / "Worlds"
+    if worlds_dir.exists():
+        found = sorted(d.name for d in worlds_dir.iterdir() if d.is_dir() and d.name != "Empty")
+    else:
+        found = ["Navezgane", "Pregen06k01", "Pregen06k02", "Pregen08k01", "Pregen08k02"]
+    return ["RWG"] + found
+
 
 @app.route("/config")
 @login_required
 def config():
     values, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
-    return render_template("config.html", values=values, sections=_CONFIG_SECTIONS)
+    meta = {**_FIELD_META, "GameWorld": {**_FIELD_META.get("GameWorld", {}), "options": _available_worlds()}}
+    return render_template("config.html", values=values, sections=_SECTIONS,
+                           field_meta=meta, field_types=_FIELD_TYPES,
+                           descriptions=_FIELD_DESCRIPTIONS)
+
+
+@app.route("/api/config", methods=["GET"])
+@login_required
+def api_config_get():
+    values, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
+    return jsonify(values)
 
 
 @app.route("/api/config", methods=["POST"])
 @login_required
 def api_config_save():
     try:
-        new_values = request.get_json() or {}
+        body = request.get_json() or {}
+        new_values = body.get("updates", body)
         existing, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
         existing.update(new_values)
         save_config(existing)
@@ -870,7 +1062,7 @@ def api_saves_delete_world():
 @login_required
 def admin():
     tele = _load_tele()
-    return render_template("admin.html", tele_data=tele)
+    return render_template("admin.html", data=parse_admin(), tele_data=tele)
 
 
 @app.route("/api/admin", methods=["GET"])

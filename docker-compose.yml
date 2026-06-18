@@ -3,6 +3,8 @@ services:
     build: .
     container_name: 7d2d
     environment:
+      - PUID=1000
+      - PGID=1000
       - PANEL_PASSWORD=changeme
       - SECRET_KEY=changeme-use-a-long-random-string
       - GAME_BRANCH=public                  # public | latest_experimental
@@ -12,6 +14,7 @@ services:
       - ./data/serverfiles:/serverfiles     # Game installation (SteamCMD target)
       - ./data/gamedata:/gamedata           # Saves, worlds, serveradmin.xml
       - ./data/config:/config              # sdtdserver.xml, teleport_data.json
+      - ./data/logs:/logs                  # Game server log files
     ports:
       - "8090:8090"                        # Web panel
       - "26900:26900/tcp"

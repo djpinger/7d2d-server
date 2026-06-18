@@ -123,6 +123,10 @@
       box-shadow: 0 0 0 0.2rem rgba(230, 57, 70, 0.25);
     }
     .form-control::placeholder { color: #5a7a9a; }
+    .field-card.full-width { grid-column: 1 / -1; }
+    .field-card.field-warning { border-color: #c0392b; background-color: #2a1a1e; }
+    .field-card.field-warning label { color: #e63946; }
+    .fix-notice { font-size: 0.78rem; color: #e63946; margin-top: 0.4rem; }
 
     /* ── Boolean switch ─────────────────────────── */
     .bool-field {
@@ -177,7 +181,8 @@
 
 {%- macro render_field(name, value, meta, desc, ftype) %}
 {%- set label = meta.get('label', name) %}
-<div class="field-card" data-field="{{ name }}">
+{%- set is_warn = meta.get('fix_when_false') and value.lower() in ('false', '0', '') %}
+<div class="field-card{% if ftype in ('textarea', 'sandbox_code') %} full-width{% endif %}{% if is_warn %} field-warning{% endif %}" data-field="{{ name }}">
   {%- if ftype == 'boolean' %}
   <label for="field-{{ name }}">{{ label }}</label>
   <div class="bool-field">
@@ -220,6 +225,16 @@
   <textarea class="form-control form-control-sm" id="field-{{ name }}" name="{{ name }}"
             rows="3">{{ value }}</textarea>
 
+  {%- elif ftype == 'sandbox_code' %}
+  <label for="field-{{ name }}">{{ label }}</label>
+  <div class="d-flex gap-2 mb-2">
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importSandboxCode()">
+      <i class="bi bi-arrow-repeat me-1"></i>Reload Saved
+    </button>
+  </div>
+  <textarea class="form-control form-control-sm font-monospace" id="field-{{ name }}" name="{{ name }}"
+            rows="3" spellcheck="false">{{ value }}</textarea>
+
   {%- elif ftype == 'number' %}
   <label for="field-{{ name }}">{{ label }}</label>
   <input type="number" class="form-control form-control-sm"
@@ -231,6 +246,15 @@
          id="field-{{ name }}" name="{{ name }}" value="{{ value }}">
   {%- endif %}
 
+  {%- if is_warn %}
+  <div class="fix-notice mt-2">
+    <i class="bi bi-exclamation-triangle-fill me-1"></i>This must be enabled for the panel to work.
+    <button type="button" class="btn btn-danger btn-sm ms-2"
+            onclick="openFixModal('{{ name }}', '{{ label }}')">
+      <i class="bi bi-wrench me-1"></i>Fix
+    </button>
+  </div>
+  {%- endif %}
   {%- if desc %}
   <div class="field-desc">{{ desc }}</div>
   {%- endif %}
@@ -276,6 +300,7 @@
       </a>
     </div>
   </div>
+  {% include '_api_warning.html' %}
 
   <div class="app-body">
 
@@ -369,6 +394,23 @@
 
     </div><!-- /content-area -->
   </div><!-- /app-body -->
+<!-- Fix modal -->
+<div class="modal fade" id="fixModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:#1f2b3e;border:1px solid #2d3f57">
+      <div class="modal-header" style="border-color:#2d3f57">
+        <h5 class="modal-title text-warning"><i class="bi bi-wrench me-2"></i>Enable <span id="fixModalLabel"></span>?</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="color:#cdd3db" id="fixModalBody"></div>
+      <div class="modal-footer" style="border-color:#2d3f57">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No, leave it</button>
+        <button type="button" class="btn btn-danger" id="fixModalConfirm">Yes, enable it</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /app-shell -->
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -480,6 +522,54 @@ function saveConfig() {
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Save Changes';
     });
+}
+
+
+// ── Fix modal ─────────────────────────────────────────────────────────────────
+let _fixField = null;
+
+function openFixModal(fieldName, fieldLabel) {
+  _fixField = fieldName;
+  document.getElementById('fixModalLabel').textContent = fieldLabel;
+  document.getElementById('fixModalBody').innerHTML =
+    `Enabling <strong>${fieldLabel}</strong> is required for the panel to communicate with the game server.<br><br>` +
+    `This will save the change to your config immediately. You will still need to <strong>restart the server</strong> for it to take effect.`;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('fixModal')).show();
+}
+
+document.getElementById('fixModalConfirm').addEventListener('click', () => {
+  if (!_fixField) return;
+  const field = document.getElementById('field-' + _fixField);
+  if (field) {
+    field.checked = true;
+    field.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+  fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({updates: {[_fixField]: 'true'}}),
+  })
+    .then(r => r.json())
+    .then(d => {
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('fixModal')).hide();
+      if (d.ok) showToast(`${_fixField} enabled — restart the server to apply.`, 'success');
+      else showToast('Error: ' + d.error, 'danger');
+    })
+    .catch(e => showToast('Network error: ' + e.message, 'danger'));
+});
+
+
+// ── Sandbox code helpers ──────────────────────────────────────────────────────
+function importSandboxCode() {
+  fetch('/api/config')
+    .then(r => r.json())
+    .then(data => {
+      const ta = document.getElementById('field-SandboxCode');
+      ta.value = data.SandboxCode || '';
+      ta.dispatchEvent(new Event('change', {bubbles: true}));
+      showToast('Reloaded from saved config.', 'success');
+    })
+    .catch(err => showToast('Failed to reload: ' + err.message, 'danger'));
 }
 
 
