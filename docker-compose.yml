@@ -20,4 +20,4 @@ services:
       - "26902:26902/udp"
       - "18080:8080"                       # Game web API (optional external access)
     restart: unless-stopped
-    stop_grace_period: 90s                 # Give the game server time to save on compose stop
+    stop_grace_period: 75s                 # Flask catches SIGTERM and stops game server; this is the hard kill fallback

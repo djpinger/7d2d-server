@@ -4,6 +4,7 @@ import json
 import queue
 import shutil
 import secrets
+import signal
 import subprocess
 import threading
 import time
@@ -1021,6 +1022,24 @@ def api_teleport_player():
 
 
 # ─── Startup ──────────────────────────────────────────────────────────────────
+
+def _shutdown_handler(signum, frame):
+    """Gracefully stop the game server when the container receives SIGTERM/SIGINT."""
+    _log_push("Shutting down — stopping game server…", source="panel")
+    with _server_lock:
+        proc  = _server_proc
+        state = _server_state
+    if proc and proc.poll() is None and state not in ("stopping", "stopped"):
+        proc.terminate()
+        try:
+            proc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    os._exit(0)
+
+signal.signal(signal.SIGTERM, _shutdown_handler)
+signal.signal(signal.SIGINT,  _shutdown_handler)
 
 threading.Thread(target=_player_poller, daemon=True).start()
 
