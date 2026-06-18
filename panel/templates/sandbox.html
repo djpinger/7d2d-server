@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>7D2D Panel — Sandbox Generator</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/darkly/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    html, body { height: 100%; overflow: hidden; background-color: #1a1a2e; }
+    .app-shell { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ── Navbar ─────────────────────────────── */
+    .app-navbar {
+      background-color: #111827;
+      border-bottom: 2px solid #c0392b;
+      padding: 0.5rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .navbar-brand-text { font-size: 1.15rem; font-weight: 700; color: #fff; letter-spacing: 0.03em; }
+    .navbar-brand-text span { color: #e63946; }
+    .navbar-meta { font-size: 0.8rem; color: #6c757d; margin-left: 0.75rem; }
+
+    /* ── Code panel ─────────────────────────── */
+    .code-panel {
+      background-color: #111827;
+      border-bottom: 1px solid #2d3f57;
+      padding: 0.6rem 1.25rem;
+      flex-shrink: 0;
+    }
+    .code-output {
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      background-color: #0d1117;
+      border: 1px solid #3a5068;
+      color: #58c4dc;
+      border-radius: 6px;
+      padding: 0.35rem 0.65rem;
+      flex: 1;
+      word-break: break-all;
+      min-height: 2.1rem;
+      letter-spacing: 0.04em;
+    }
+    .code-badge {
+      font-size: 0.73rem; background: #253347; color: #adb5bd;
+      border-radius: 4px; padding: 2px 7px; white-space: nowrap;
+    }
+    .code-badge.has-changes { background: #2d2003; color: #f39c12; }
+    .import-input {
+      background-color: #253347 !important; border-color: #3a5068 !important;
+      color: #e9ecef !important; font-family: monospace; font-size: 0.85rem;
+    }
+    .import-input:focus {
+      border-color: #e63946 !important;
+      box-shadow: 0 0 0 0.15rem rgba(230,57,70,0.25) !important;
+    }
+
+    /* ── Content area (scrollable) ──────────── */
+    .content-area { flex: 1; overflow-y: auto; padding: 0 1.5rem 2rem; background-color: #1a1a2e; }
+
+    /* ── Category tabs (sticky inside scroll) ── */
+    .category-tabs {
+      position: sticky; top: 0; z-index: 99;
+      background-color: #1a1a2e;
+      padding-top: 0.6rem;
+      border-bottom: 1px solid #2d3f57;
+      margin-bottom: 1rem;
+    }
+    .nav-tabs { border-bottom: none; flex-wrap: wrap; gap: 2px; }
+    .nav-tabs .nav-link {
+      color: #adb5bd; border: none; border-radius: 5px 5px 0 0;
+      font-size: 0.82rem; padding: 0.35rem 0.8rem; white-space: nowrap;
+    }
+    .nav-tabs .nav-link:hover { color: #f8f9fa; background: #1f2b3e; }
+    .nav-tabs .nav-link.active { background-color: #1f2b3e; color: #fff; border-bottom: 2px solid #e63946; }
+    .tab-badge {
+      font-size: 0.68rem; background: #f39c12; color: #000;
+      border-radius: 10px; padding: 1px 5px; margin-left: 3px;
+    }
+
+    /* ── Groups ─────────────────────────────── */
+    .groups-wrapper { max-width: 860px; }
+    .group-section { margin-bottom: 1.25rem; }
+    .group-header {
+      font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.09em; color: #5a7a9a;
+      padding-bottom: 0.3rem; margin-bottom: 0.5rem;
+      border-bottom: 1px solid #2d3f57;
+    }
+
+    /* ── Options grid (2-column) ─────────────── */
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+    }
+    .option-row {
+      background-color: #1f2b3e;
+      border: 1px solid #2d3f57;
+      border-radius: 7px;
+      padding: 0.5rem 0.75rem;
+      display: flex; align-items: center; gap: 0.5rem;
+      transition: border-color 0.15s, opacity 0.15s;
+      min-width: 0;
+    }
+    .option-row.non-default { border-color: #f39c12; }
+    .option-row.opt-disabled { opacity: 0.35; pointer-events: none; }
+    .option-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #2d3f57; flex-shrink: 0; transition: background 0.15s;
+    }
+    .option-row.non-default .option-dot { background: #f39c12; }
+    .option-label {
+      flex: 1; font-size: 0.81rem; font-weight: 500; color: #cdd3db;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .option-control { flex-shrink: 0; display: flex; align-items: center; gap: 0.35rem; }
+    .option-control .form-select {
+      background-color: #253347; border-color: #3a5068;
+      color: #e9ecef; font-size: 0.8rem;
+      padding: 0.2rem 1.6rem 0.2rem 0.45rem;
+      width: 130px;
+    }
+    .option-control .form-select:focus {
+      border-color: #e63946; box-shadow: 0 0 0 0.15rem rgba(230,57,70,0.25);
+      background-color: #253347; color: #e9ecef;
+    }
+    .option-control .form-check-input:checked { background-color: #e63946; border-color: #e63946; }
+    .bool-default { font-size: 0.7rem; color: #5a7a9a; white-space: nowrap; }
+
+    /* ── Per-option reset button ─────────────── */
+    .opt-reset {
+      flex-shrink: 0; background: none; border: none;
+      color: #5a7a9a; font-size: 0.8rem; padding: 0 2px;
+      cursor: pointer; opacity: 0; pointer-events: none;
+      transition: color 0.15s, opacity 0.15s;
+      line-height: 1;
+    }
+    .opt-reset:hover { color: #f39c12; }
+    .option-row.non-default .opt-reset { opacity: 1; pointer-events: auto; }
+
+    /* ── Toast ──────────────────────────────── */
+    .toast-container { z-index: 9999; }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- Navbar -->
+  <div class="app-navbar">
+    <div class="d-flex align-items-center">
+      <span class="navbar-brand-text"><span>7D2D</span> Panel</span>
+      <span class="navbar-meta">{{ server_name }}</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a href="/dashboard" class="btn btn-sm btn-outline-secondary"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+    <a href="/config" class="btn btn-sm btn-outline-secondary"><i class="bi bi-sliders me-1"></i>Config</a>
+      <a href="/saves" class="btn btn-sm btn-outline-secondary"><i class="bi bi-hdd me-1"></i>Saves</a>
+      <a href="/admin" class="btn btn-sm btn-outline-secondary"><i class="bi bi-shield-lock me-1"></i>Admin</a>
+      <a href="/sandbox" class="btn btn-sm btn-danger"><i class="bi bi-code-square me-1"></i>Sandbox</a>
+      <a href="/console" class="btn btn-sm btn-outline-secondary"><i class="bi bi-terminal me-1"></i>Console</a>
+      <a href="/players" class="btn btn-sm btn-outline-secondary"><i class="bi bi-people me-1"></i>Players</a>
+      <a href="/give" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-seam me-1"></i>Give</a>
+      <a href="/teleport" class="btn btn-sm btn-outline-secondary"><i class="bi bi-geo-alt me-1"></i>Teleport</a>
+      <a href="/logout" class="btn btn-sm btn-outline-danger ms-1"><i class="bi bi-box-arrow-right me-1"></i>Logout</a>
+    </div>
+  </div>
+
+  <!-- Code Panel -->
+  <div class="code-panel">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <span class="text-muted" style="font-size:0.78rem;white-space:nowrap;">Generated Code</span>
+      <div class="code-output" id="codeOutput">A</div>
+      <span class="code-badge" id="changeBadge">All defaults</span>
+      <button class="btn btn-sm btn-outline-info" onclick="copyCode()" title="Copy to clipboard">
+        <i class="bi bi-clipboard"></i>
+      </button>
+      <button class="btn btn-sm btn-outline-success" onclick="applyToConfig()" title="Write this SandboxCode to server config">
+        <i class="bi bi-floppy me-1"></i>Apply to Config
+      </button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="loadFromConfig()" title="Load current SandboxCode from server config">
+        <i class="bi bi-cloud-download me-1"></i>Load from Config
+      </button>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-muted" style="font-size:0.78rem;white-space:nowrap;">Import Code</span>
+      <input type="text" id="importInput" class="form-control form-control-sm import-input"
+             placeholder="Paste a SandboxCode to decode it…" style="max-width:360px;">
+      <button class="btn btn-sm btn-outline-primary" onclick="importCode()">
+        <i class="bi bi-box-arrow-in-down me-1"></i>Decode
+      </button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="resetAll()" title="Reset all settings to game defaults">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset All
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-container position-fixed top-0 end-0 p-3">
+    <div id="mainToast" class="toast" role="alert" aria-live="assertive">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMsg"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content-area">
+    <div class="category-tabs">
+      <ul class="nav nav-tabs" id="categoryTabs"></ul>
+    </div>
+    <div class="tab-content" id="tabContent"></div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Data ──────────────────────────────────────────────────────────────────────
+// Each option: id, enumId, label, cat, group, type, def (defaultIndex), vals[]
+
+const OPTIONS = [
+  // ── Player ────────────────────────────────────────────────────────────────
+  {id:'RangedDamage',      enumId:0,  label:'Ranged Damage',           cat:'Player', group:'Damage',           type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'MeleeDamage',       enumId:1,  label:'Melee Damage',            cat:'Player', group:'Damage',           type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'BlockDamage',       enumId:2,  label:'Block Damage',            cat:'Player', group:'Damage',           type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'TerrainDamage',     enumId:3,  label:'Terrain Damage',          cat:'Player', group:'Damage',           type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'HeadshotMultiplier',enumId:4,  label:'Headshot Multiplier',     cat:'Player', group:'Damage',           type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'IncomingDamage',    enumId:17, label:'Incoming Damage',         cat:'Player', group:'Damage',           type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+
+  {id:'CrouchSpeed',       enumId:5,  label:'Crouch Speed',            cat:'Player', group:'Movement',         type:'float', def:7,  vals:[0,0.25,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,2,3],  labels:['0%','25%','50%','60%','70%','80%','90%','100%','110%','120%','130%','140%','150%','200%','300%']},
+  {id:'WalkSpeed',         enumId:6,  label:'Walk Speed',              cat:'Player', group:'Movement',         type:'float', def:6,  vals:[0.25,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,2,3],    labels:['25%','50%','60%','70%','80%','90%','100%','110%','120%','130%','140%','150%','200%','300%']},
+  {id:'RunSpeed',          enumId:7,  label:'Run Speed',               cat:'Player', group:'Movement',         type:'float', def:7,  vals:[0,0.25,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,2,3],  labels:['0%','25%','50%','60%','70%','80%','90%','100%','110%','120%','130%','140%','150%','200%','300%']},
+  {id:'JumpStrength',      enumId:8,  label:'Jump Height',             cat:'Player', group:'Movement',         type:'float', def:2,  vals:[0,0.5,1,1.25,1.5,2,3],                                    labels:['0%','50%','100%','125%','150%','200%','300%']},
+  {id:'StaminaUsage',      enumId:9,  label:'Stamina Usage',           cat:'Player', group:'Movement',         type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,1.75,2],                      labels:['0%','25%','50%','75%','100%','125%','150%','175%','200%']},
+  {id:'StaminaRegen',      enumId:10, label:'Stamina Regen',           cat:'Player', group:'Movement',         type:'float', def:3,  vals:[0.25,0.5,0.75,1,1.25,1.5,2,3],                           labels:['25%','50%','75%','100%','125%','150%','200%','300%']},
+
+  {id:'XPMultiplier',      enumId:18, label:'XP Multiplier',           cat:'Player', group:'Progression',      type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,1.75,2,3,5],                  labels:['0%','25%','50%','75%','100%','125%','150%','175%','200%','300%','500%']},
+  {id:'ShowXP',            enumId:19, label:'Show XP',                 cat:'Player', group:'Progression',      type:'int',   def:0,  vals:[0,1,2,3],         labels:['All','Self Only','Party','None']},
+  {id:'PlayerLevelBonusApplied',enumId:11,label:'Level Stat Bonus',    cat:'Player', group:'Progression',      type:'bool',  def:1,  vals:[false,true]},
+  {id:'SkillGainRate',     enumId:116,label:'Skill Gain Rate',         cat:'Player', group:'Progression',      type:'int',   def:0,  vals:[1,2,3,4,5]},
+  {id:'SkillPointsPerLevel',enumId:117,label:'Skill Gain Amount',      cat:'Player', group:'Progression',      type:'int',   def:1,  vals:[0,1,2,3,4,5,6,7]},
+
+  {id:'JarRefund',         enumId:12, label:'Jar Refund',              cat:'Player', group:'Survival',         type:'float', def:7,  vals:[0,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],          labels:['0%','5%','10%','20%','30%','40%','50%','60%','70%','80%','90%','100%']},
+  {id:'NewbieCoat',        enumId:15, label:'New Player Buff',         cat:'Player', group:'Survival',         type:'bool',  def:1,  vals:[false,true]},
+
+  {id:'DeathPenalty',      enumId:26, label:'Death Penalty',           cat:'Player', group:'Death & Penalties', type:'int',  def:1,  vals:[0,1,2,3],         labels:['Nothing','XP Only','Injured','Permanent Death']},
+  {id:'DropOnDeath',       enumId:27, label:'Drop On Death',           cat:'Player', group:'Death & Penalties', type:'int',  def:1,  vals:[0,1,2,3,4],       labels:['Nothing','All','Toolbelt Only','Backpack Only','Delete All']},
+  {id:'DropOnQuit',        enumId:28, label:'Drop On Quit',            cat:'Player', group:'Death & Penalties', type:'int',  def:0,  vals:[0,1,2,3],         labels:['None','Everything','Toolbelt Only','Backpack Only']},
+  {id:'LoseItemsOnDeathType', enumId:22,label:'Lose On Death',         cat:'Player', group:'Death & Penalties', type:'int',  def:0,  vals:[0,1,2,3,4,5],    labels:['None','Random Items','Equipped Items','Toolbelt','Backpack','Everything']},
+  {id:'LoseItemsOnDeathCount',enumId:23,label:'Death Loss Count',      cat:'Player', group:'Death & Penalties', type:'int',  def:0,  vals:[1,2,3,4,5,6,7,8,9,10]},
+  {id:'DegradeItemsOnDeath',  enumId:24,label:'Death Degradation',     cat:'Player', group:'Death & Penalties', type:'int',  def:0,  vals:[0,1,2,3],         labels:['None','Equipped Items','Toolbelt','All Items']},
+  {id:'DegradeAmountOnDeath', enumId:25,label:'Degrade Amount',        cat:'Player', group:'Death & Penalties', type:'float',def:2,  vals:[0,0.05,0.1,0.15,0.2,0.25],                                labels:['0%','5%','10%','15%','20%','25%']},
+
+  {id:'InfectionRate',     enumId:29, label:'Infection Rate',          cat:'Player', group:'Survival',         type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'EncumbranceModifier',enumId:20,label:'Encumbrance Slots',       cat:'Player', group:'Survival',         type:'float', def:2,  vals:[10,1.35,1,0.7,0.35,0],                                    labels:['Max (10×)','135%','Default','70%','35%','Off']},
+
+  // ── Entities ──────────────────────────────────────────────────────────────
+  {id:'EnemySpawnMode',    enumId:30, label:'Enemy Spawn',             cat:'Entities',group:'Spawning',        type:'bool',  def:1,  vals:[false,true]},
+  {id:'BiomeZombieRespawn',enumId:44, label:'Biome Enemy Respawn',     cat:'Entities',group:'Spawning',        type:'int',   def:0,  vals:[0,1,2,3,4,5],    labels:['Default','Low','Normal','High','Very High','Max']},
+  {id:'BiomeAnimalRespawn',enumId:45, label:'Biome Animal Respawn',    cat:'Entities',group:'Spawning',        type:'int',   def:0,  vals:[0,1,2,3,4,5],    labels:['Default','Low','Normal','High','Very High','Max']},
+  {id:'BiomeEnemyDensity', enumId:46, label:'Biome Enemy Density',     cat:'Entities',group:'Spawning',        type:'int',   def:0,  vals:[0,1,2,3,4,5],    labels:['Default','Low','Normal','High','Very High','Max']},
+
+  {id:'EntityDamage',      enumId:31, label:'Entity Damage',           cat:'Entities',group:'Damage',          type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'BlockDamageAI',     enumId:32, label:'Entity Block Damage',     cat:'Entities',group:'Damage',          type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'BlockDamageAIBM',   enumId:33, label:'Blood Moon Block Damage', cat:'Entities',group:'Damage',          type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'EntityIncomingDamage',enumId:42,label:'Entity Incoming Damage', cat:'Entities',group:'Damage',          type:'float', def:6,  vals:[0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],        labels:['25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'HeadshotMode',      enumId:16, label:'Headshot Mode',           cat:'Entities',group:'Damage',          type:'int',   def:0,  vals:[0,1,2],           labels:['None','Headshots Only','Headshots Instant Kill']},
+  {id:'ShowHealthBars',    enumId:13, label:'Entity Health Bars',      cat:'Entities',group:'Damage',          type:'bool',  def:0,  vals:[false,true]},
+  {id:'ShowEnemyDamage',   enumId:14, label:'Show Entity Damage',      cat:'Entities',group:'Damage',          type:'bool',  def:0,  vals:[false,true]},
+
+  {id:'ZombieMove',        enumId:34, label:'Zombie Day Speed',        cat:'Entities',group:'Speed',           type:'int',   def:0,  vals:[0,1,2,3,4],       labels:['Walk','Jog','Run','Sprint','Nightmare']},
+  {id:'ZombieMoveNight',   enumId:35, label:'Zombie Night Speed',      cat:'Entities',group:'Speed',           type:'int',   def:3,  vals:[0,1,2,3,4],       labels:['Walk','Jog','Run','Sprint','Nightmare']},
+  {id:'ZombieFeralMove',   enumId:36, label:'Zombie Feral Speed',      cat:'Entities',group:'Speed',           type:'int',   def:3,  vals:[0,1,2,3,4],       labels:['Walk','Jog','Run','Sprint','Nightmare']},
+  {id:'ZombieBMMove',      enumId:37, label:'Zombie Blood Moon Speed', cat:'Entities',group:'Speed',           type:'int',   def:3,  vals:[0,1,2,3,4],       labels:['Walk','Jog','Run','Sprint','Nightmare']},
+
+  {id:'ZombieFeralSense',  enumId:38, label:'Zombie Feral Sense',      cat:'Entities',group:'Behavior',        type:'int',   def:0,  vals:[0,1,2,3],         labels:['Disabled','Day Only','Night Only','Always']},
+  {id:'AISmellMode',       enumId:39, label:'AI Smell Mode',           cat:'Entities',group:'Behavior',        type:'int',   def:3,  vals:[0,1,2,3,4,5],    labels:['Off','Walk','Jog','Run','Sprint','Nightmare']},
+  {id:'AllowZombieDigging',enumId:40, label:'Zombie Digging',          cat:'Entities',group:'Behavior',        type:'bool',  def:1,  vals:[false,true]},
+  {id:'ZombieRageChance',  enumId:41, label:'Zombie Rage Chance',      cat:'Entities',group:'Behavior',        type:'float', def:1,  vals:[0,0.15,0.3,0.35,0.4,0.5,0.6,0.75,0.9,1],                 labels:['0%','15%','30%','35%','40%','50%','60%','75%','90%','100%']},
+  {id:'ZombiesEatAnimals', enumId:47, label:'Zombies Eat Animals',     cat:'Entities',group:'Behavior',        type:'bool',  def:1,  vals:[false,true]},
+  {id:'MaxEnemyTier',      enumId:43, label:'Max Enemy Tier',          cat:'Entities',group:'Behavior',        type:'int',   def:5,  vals:[0,1,2,3,4,5],    labels:['Tier 0','Tier 1','Tier 2','Tier 3','Tier 4','Elites']},
+
+  // ── World ─────────────────────────────────────────────────────────────────
+  {id:'BloodMoonFrequency',enumId:48, label:'Blood Moon Frequency',    cat:'World',  group:'Blood Moon',       type:'int',   def:7,  vals:[0,1,2,3,4,5,6,7,8,9,10,14,20,30],                         labels:['Never','1 Day','2 Days','3 Days','4 Days','5 Days','6 Days','7 Days','8 Days','9 Days','10 Days','14 Days','20 Days','30 Days']},
+  {id:'BloodMoonRange',    enumId:49, label:'Blood Moon Range',        cat:'World',  group:'Blood Moon',       type:'int',   def:0,  vals:[0,1,2,3,4,7,10,14,20],                                    labels:['None','±1 Day','±2 Days','±3 Days','±4 Days','±7 Days','±10 Days','±14 Days','±20 Days']},
+  {id:'BloodMoonWarning',  enumId:50, label:'Blood Moon Warning',      cat:'World',  group:'Blood Moon',       type:'int',   def:1,  vals:[0,1,2],           labels:['None','Morning','Night']},
+  {id:'BloodMoonEnemyCount',enumId:51,label:'Blood Moon Count',        cat:'World',  group:'Blood Moon',       type:'int',   def:2,  vals:[4,6,8,10,12,16,24,32,64]},
+
+  {id:'AirDropFrequency',  enumId:52, label:'Air Drop Frequency',      cat:'World',  group:'Air Drops',        type:'int',   def:3,  vals:[0,1,2,3,4,5,6],                                           labels:['Never','Every Day','1-3 Days','3 Days','3-7 Days','7 Days','1-7 Days']},
+  {id:'AirDropMarker',     enumId:53, label:'Mark Air Drops',          cat:'World',  group:'Air Drops',        type:'bool',  def:1,  vals:[false,true]},
+  {id:'AirDropRandomTime', enumId:54, label:'Air Drop Variance',       cat:'World',  group:'Air Drops',        type:'int',   def:0,  vals:[0,1,2,3,4,5,6],                                           labels:['None','±1 Day','±2 Days','±3 Days','±4 Days','±5 Days','±6 Days']},
+
+  {id:'TemperatureSurvival',enumId:56,label:'Temperature Survival',    cat:'World',  group:'Weather',          type:'bool',  def:1,  vals:[false,true]},
+  {id:'StormFreq',         enumId:57, label:'Storm Frequency',         cat:'World',  group:'Weather',          type:'float', def:2,  vals:[0,0.5,1,1.5,2,3,4,5],                                    labels:['0%','50%','100%','150%','200%','300%','400%','500%']},
+  {id:'StormWarning',      enumId:58, label:'Storm Warning',           cat:'World',  group:'Weather',          type:'bool',  def:1,  vals:[false,true]},
+  {id:'BiomeProgression',  enumId:55, label:'Biome Progression',       cat:'World',  group:'Weather',          type:'bool',  def:1,  vals:[false,true]},
+
+  {id:'DayNightLength',    enumId:66, label:'24h Cycle (min)',          cat:'World',  group:'Day / Night',      type:'int',   def:5,  vals:[10,20,30,40,50,60,90,120]},
+  {id:'DayLightLength',    enumId:67, label:'Daylight Length (hrs)',    cat:'World',  group:'Day / Night',      type:'int',   def:8,  vals:[0,4,6,8,10,12,14,16,18,20,24]},
+
+  {id:'GlobalGSModifier',  enumId:60, label:'Global GameStage',        cat:'World',  group:'Stage Modifiers',  type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+  {id:'BiomeGSModifier',   enumId:61, label:'Biome GameStage',         cat:'World',  group:'Stage Modifiers',  type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+  {id:'HeatMapSensitivity',enumId:59, label:'Heatmap Sensitivity',     cat:'World',  group:'Stage Modifiers',  type:'float', def:3,  vals:[0,0.25,0.5,1,1.5,2],                                      labels:['0%','25%','50%','Default','150%','200%']},
+
+  {id:'WorkstationsInTheWild',enumId:73,label:'Workstations in the Wild',cat:'World',group:'World Settings',   type:'float', def:0,  vals:[0,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],          labels:['None','5%','10%','20%','30%','40%','50%','60%','70%','80%','90%','100%']},
+  {id:'MaxTechType',       enumId:74, label:'Max Tech Type',            cat:'World',  group:'World Settings',   type:'int',   def:2,  vals:[0,1,2,3,4],       labels:['Tech 1','Tech 2','Tech 3','Tech 4','All']},
+
+  {id:'AllowMap',          enumId:68, label:'Allow Map',                cat:'World',  group:'HUD & Navigation', type:'bool', def:1,  vals:[false,true]},
+  {id:'AllowCompass',      enumId:69, label:'Allow Compass',            cat:'World',  group:'HUD & Navigation', type:'bool', def:1,  vals:[false,true]},
+  {id:'AllowScreenMarkers',enumId:70, label:'Allow Screen Markers',     cat:'World',  group:'HUD & Navigation', type:'bool', def:1,  vals:[false,true]},
+  {id:'ShowLocationInfo',  enumId:71, label:'Show Location Info',       cat:'World',  group:'HUD & Navigation', type:'bool', def:1,  vals:[false,true]},
+  {id:'ShowDayTime',       enumId:72, label:'Show Day/Time',            cat:'World',  group:'HUD & Navigation', type:'bool', def:1,  vals:[false,true]},
+
+  // ── Resources ─────────────────────────────────────────────────────────────
+  {id:'LootMaxTier',       enumId:77, label:'Loot Max Tier',            cat:'Resources',group:'Loot Stage',     type:'int',   def:5,  vals:[1,2,3,4,5,6]},
+  {id:'GlobalLSModifier',  enumId:62, label:'Global Loot Stage',        cat:'Resources',group:'Loot Stage',     type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+  {id:'BiomeLSModifier',   enumId:63, label:'Biome Loot Stage',         cat:'Resources',group:'Loot Stage',     type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+  {id:'POITierLSModifier', enumId:64, label:'POI Loot Stage',           cat:'Resources',group:'Loot Stage',     type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+
+  {id:'LootRespawnDays',   enumId:75, label:'Loot Respawn Days',        cat:'Resources',group:'Loot General',   type:'int',   def:2,  vals:[-1,5,7,10,15,20,30,40,50], labels:['Never','5 Days','7 Days','10 Days','15 Days','20 Days','30 Days','40 Days','50 Days']},
+  {id:'LootTimer',         enumId:76, label:'Loot Timer',               cat:'Resources',group:'Loot General',   type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'GlobalLootCount',   enumId:78, label:'Loot Abundance',           cat:'Resources',group:'Loot General',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'LootBagChance',     enumId:90, label:'Loot Bag Drop',            cat:'Resources',group:'Loot General',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'TreasureMapChance', enumId:89, label:'Treasure Map Chance',      cat:'Resources',group:'Loot General',   type:'float', def:7,  vals:[0,0.25,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,2,3], labels:['0%','25%','50%','60%','70%','80%','90%','100%','110%','120%','130%','140%','150%','200%','300%']},
+
+  {id:'FoodLootCount',     enumId:79, label:'Food',                     cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'DrinkLootCount',    enumId:80, label:'Drink',                    cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'MedicalLootCount',  enumId:81, label:'Medical',                  cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'AmmoLootCount',     enumId:82, label:'Ammo',                     cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'ResourceLootCount', enumId:83, label:'Resources',                cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'ArmorLootCount',    enumId:84, label:'Armor',                    cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'MeleeLootCount',    enumId:85, label:'Melee Weapons',            cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'RangedLootCount',   enumId:86, label:'Ranged Weapons',           cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'DukesLootCount',    enumId:87, label:'Dukes',                    cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'CraftingMagazinesLootCount',enumId:88,label:'Magazines',         cat:'Resources',group:'Loot by Type',   type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+
+  {id:'CropOutput',        enumId:91, label:'Crop Yield',               cat:'Resources',group:'Farming',         type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'SeedDropOutput',    enumId:92, label:'Seed Drop',                cat:'Resources',group:'Farming',         type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'CropGrowthSpeed',   enumId:93, label:'Crop Growth',              cat:'Resources',group:'Farming',         type:'float', def:5,  vals:[1000,0,0.2,0.5,0.75,1,1.5,2,3], labels:['Instant','Off','20%','50%','75%','100%','150%','200%','300%']},
+  {id:'MiningOutput',      enumId:101,label:'Mining Yield',             cat:'Resources',group:'Gathering',       type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+  {id:'HarvestingOutput',  enumId:102,label:'Resource Yield',           cat:'Resources',group:'Gathering',       type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,3,4,5],     labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','300%','400%','500%']},
+
+  // ── Crafting ──────────────────────────────────────────────────────────────
+  {id:'BackpackCrafting',  enumId:94, label:'Backpack Crafting',        cat:'Crafting',group:'General',          type:'int',   def:1,  vals:[0,1,2,3],         labels:['Off','Normal','All Recipes','Workstation-like']},
+  {id:'WorkstationCrafting',enumId:95,label:'Workstation Crafting',     cat:'Crafting',group:'General',          type:'bool',  def:1,  vals:[false,true]},
+  {id:'CraftingProgression',enumId:96,label:'Crafting Progression',     cat:'Crafting',group:'General',          type:'bool',  def:1,  vals:[false,true]},
+  {id:'CraftingMaxTier',   enumId:100,label:'Crafting Max Tier',        cat:'Crafting',group:'General',          type:'int',   def:5,  vals:[1,2,3,4,5,6]},
+
+  {id:'CraftingTime',      enumId:97, label:'Crafting Timer',           cat:'Crafting',group:'Rates',            type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'CraftingInput',     enumId:98, label:'Crafting Cost',            cat:'Crafting',group:'Rates',            type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'CraftingOutput',    enumId:99, label:'Crafting Yield',           cat:'Crafting',group:'Rates',            type:'float', def:3,  vals:[0.25,0.5,0.75,1,1.25,1.5,2,3],                           labels:['25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'ScrappingOutput',   enumId:103,label:'Scrapping Yield',          cat:'Crafting',group:'Rates',            type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+
+  {id:'SmeltingType',      enumId:104,label:'Smelter Type',             cat:'Crafting',group:'Stations',         type:'int',   def:0,  vals:[0,1],             labels:['Smelter','Forge']},
+  {id:'DewCollectorTime',  enumId:105,label:'Dew Collector Time',       cat:'Crafting',group:'Stations',         type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'DewCollectorOutput',enumId:106,label:'Dew Collector Yield',      cat:'Crafting',group:'Stations',         type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'DewCollectorInput', enumId:107,label:'Dew Collector Input',      cat:'Crafting',group:'Stations',         type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'ApiaryTime',        enumId:108,label:'Apiary Time',              cat:'Crafting',group:'Stations',         type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'ApiaryOutput',      enumId:109,label:'Apiary Yield',             cat:'Crafting',group:'Stations',         type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
+  {id:'ApiaryInput',       enumId:110,label:'Apiary Input',             cat:'Crafting',group:'Stations',         type:'float', def:5,  vals:[0,0.2,0.4,0.6,0.8,1,1.5,2,3],                            labels:['0%','20%','40%','60%','80%','100%','150%','200%','300%']},
+
+  {id:'ItemDegradation',   enumId:21, label:'Item Degradation',        cat:'Crafting',group:'Repair & Magazines',type:'float',def:3,  vals:[0,0.25,0.5,1,1.5,2],                                      labels:['Off','25%','50%','Default','150%','200%']},
+  {id:'RepairTypes',       enumId:113,label:'Repair Method',            cat:'Crafting',group:'Repair & Magazines',type:'int', def:3,  vals:[0,1,2,3],         labels:['Nothing','Primitive Only','Standard','Both']},
+  {id:'MaxDegradationAmount',enumId:114,label:'Repair Degradation',     cat:'Crafting',group:'Repair & Magazines',type:'float',def:0, vals:[0,0.05,0.1,0.15,0.2,0.25],                                labels:['None','5%','10%','15%','20%','25%']},
+  {id:'PointsPerMagazine', enumId:115,label:'Magazine Progress',        cat:'Crafting',group:'Repair & Magazines',type:'int', def:1,  vals:[0,1,2,3,4,5,6,7]},
+
+  // ── Tasks ─────────────────────────────────────────────────────────────────
+  {id:'QuestsEnabled',     enumId:118,label:'Quests Enabled',           cat:'Tasks',  group:'Quests',           type:'bool',  def:1,  vals:[false,true]},
+  {id:'IntroQuestEnabled', enumId:119,label:'Intro Quest',              cat:'Tasks',  group:'Quests',           type:'bool',  def:1,  vals:[false,true]},
+  {id:'BuriedQuestsEnabled',enumId:124,label:'Buried Quests',           cat:'Tasks',  group:'Quests',           type:'bool',  def:1,  vals:[false,true]},
+  {id:'POIQuestsEnabled',  enumId:125,label:'POI Quests',               cat:'Tasks',  group:'Quests',           type:'bool',  def:1,  vals:[false,true]},
+  {id:'TraderToTraderQuestsEnabled',enumId:120,label:'Trade Routes',    cat:'Tasks',  group:'Quests',           type:'bool',  def:1,  vals:[false,true]},
+  {id:'QuestsPerTier',     enumId:122,label:'Quests per Tier',          cat:'Tasks',  group:'Quests',           type:'int',   def:10, vals:[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]},
+  {id:'QuestProgressionDailyLimit',enumId:123,label:'Quests per Day',   cat:'Tasks',  group:'Quests',           type:'int',   def:4,  vals:[-1,1,2,3,4,5,6,7,8,9,10], labels:['Unlimited','1/day','2/day','3/day','4/day','5/day','6/day','7/day','8/day','9/day','10/day']},
+  {id:'StarterSkillPoints',enumId:121,label:'Base Skill Points',        cat:'Tasks',  group:'Quests',           type:'int',   def:4,  vals:[0,1,2,3,4,5,6,7,8,9,10]},
+
+  {id:'ChallengesEnabled', enumId:139,label:'Challenges Enabled',       cat:'Tasks',  group:'Challenges',       type:'bool',  def:1,  vals:[false,true]},
+  {id:'IntroChallengesEnabled',enumId:140,label:'Intro Challenges',     cat:'Tasks',  group:'Challenges',       type:'bool',  def:1,  vals:[false,true]},
+
+  // ── Traders ───────────────────────────────────────────────────────────────
+  {id:'TradersEnabled',    enumId:128,label:'Trading Enabled',          cat:'Traders',group:'General',          type:'bool',  def:1,  vals:[false,true]},
+  {id:'TraderHours',       enumId:127,label:'Trader Hours',             cat:'Traders',group:'General',          type:'int',   def:0,  vals:[0,1,2,3,4,5,6],                                           labels:['Default','Setting 1','Setting 2','Setting 3','Setting 4','Setting 5','Setting 6']},
+  {id:'TraderProtection',  enumId:132,label:'Trader Protection',        cat:'Traders',group:'General',          type:'int',   def:0,  vals:[0,1,2],           labels:['Yes (Full)','Partial','No']},
+  {id:'TraderDialog',      enumId:126,label:'Trading Dialog',           cat:'Traders',group:'General',          type:'bool',  def:1,  vals:[false,true]},
+  {id:'GlobalTSModifier',  enumId:65, label:'Global Trader Stage',      cat:'Traders',group:'General',          type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+  {id:'TraderMaxTier',     enumId:136,label:'Trader Max Tier',          cat:'Traders',group:'General',          type:'int',   def:5,  vals:[1,2,3,4,5,6]},
+  {id:'TraderItemAbundance',enumId:134,label:'Trader Item Count',       cat:'Traders',group:'General',          type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+  {id:'TraderBuyLimit',    enumId:135,label:'Trader Buy Limit',         cat:'Traders',group:'General',          type:'int',   def:3,  vals:[0,1,2,3,4,5,6,7,8,9,10]},
+  {id:'TraderResetInterval',enumId:133,label:'Trader Reset',            cat:'Traders',group:'General',          type:'int',   def:0,  vals:[-1,1,2,3,4,5,6,7,14], labels:['Default','1 Day','2 Days','3 Days','4 Days','5 Days','6 Days','7 Days','14 Days']},
+
+  {id:'TraderSellPrices',  enumId:130,label:'Sell Price',               cat:'Traders',group:'Pricing',          type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,1.75,2,3,4],                  labels:['0%','25%','50%','75%','100%','125%','150%','175%','200%','300%','400%']},
+  {id:'TraderBuyPrices',   enumId:131,label:'Buy Price',                cat:'Traders',group:'Pricing',          type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,1.75,2,3,4],                  labels:['0%','25%','50%','75%','100%','125%','150%','175%','200%','300%','400%']},
+
+  {id:'VendingEnabled',    enumId:129,label:'Vending Machines',         cat:'Traders',group:'Vending',          type:'bool',  def:1,  vals:[false,true]},
+  {id:'VendingResetInterval',enumId:137,label:'Vending Reset',          cat:'Traders',group:'Vending',          type:'int',   def:0,  vals:[-1,1,2,3,4,5,6,7,14], labels:['Default','1 Day','2 Days','3 Days','4 Days','5 Days','6 Days','7 Days','14 Days']},
+  {id:'VendingItemAbundance',enumId:138,label:'Vending Item Count',     cat:'Traders',group:'Vending',          type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
+
+  // ── Misc ──────────────────────────────────────────────────────────────────
+  {id:'VehicleFuelUsage',  enumId:141,label:'Fuel Usage',               cat:'Misc',   group:'Vehicles',         type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'VehicleEntityDamage',enumId:142,label:'Entity Damage',           cat:'Misc',   group:'Vehicles',         type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'VehicleBlockDamage',enumId:143,label:'Block Damage',             cat:'Misc',   group:'Vehicles',         type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+  {id:'VehicleSelfDamage', enumId:144,label:'Self Damage',              cat:'Misc',   group:'Vehicles',         type:'float', def:7,  vals:[0,0.25,0.35,0.5,0.65,0.75,0.85,1,1.25,1.5,2,2.5,3],      labels:['0%','25%','35%','50%','65%','75%','85%','100%','125%','150%','200%','250%','300%']},
+
+  {id:'ElectricalOutput',  enumId:145,label:'Electrical Output',        cat:'Misc',   group:'Electrical',       type:'float', def:3,  vals:[0.25,0.5,0.75,1,1.25,1.5,2,3],                           labels:['25%','50%','75%','100%','125%','150%','200%','300%']},
+
+  {id:'SillyCelebrate',    enumId:146,label:'Celebrate Kills',          cat:'Misc',   group:'Silly',            type:'int',   def:0,  vals:[0,1,2],           labels:['Off','Player Kills','All Kills']},
+  {id:'SillyBigHeads',     enumId:147,label:'Big Heads',                cat:'Misc',   group:'Silly',            type:'bool',  def:0,  vals:[false,true]},
+  {id:'SillyTinyZombies',  enumId:148,label:'Tiny Zombies',             cat:'Misc',   group:'Silly',            type:'bool',  def:0,  vals:[false,true]},
+  {id:'SillySounds',       enumId:149,label:'Silly Sounds',             cat:'Misc',   group:'Silly',            type:'bool',  def:0,  vals:[false,true]},
+  {id:'SillyLowGravity',   enumId:150,label:'Gravity',                  cat:'Misc',   group:'Silly',            type:'float', def:5,  vals:[0.5,0.6,0.7,0.8,0.9,1],                                  labels:['50%','60%','70%','80%','90%','100%']},
+  {id:'SillyBlackandWhite',enumId:151,label:'Black and White',          cat:'Misc',   group:'Silly',            type:'bool',  def:0,  vals:[false,true]},
+];
+
+const DISABLE_RULES = {
+  StaminaUsage:       {vi:0, disables:['StaminaRegen']},
+  BloodMoonFrequency: {vi:0, disables:['BloodMoonRange','BloodMoonEnemyCount','BloodMoonWarning']},
+  AirDropFrequency:   {vi:0, disables:['AirDropRandomTime','AirDropMarker']},
+  StormFreq:          {vi:0, disables:['StormWarning']},
+  GlobalLootCount:    {vi:0, disables:['FoodLootCount','DrinkLootCount','MedicalLootCount','AmmoLootCount',
+                         'ResourceLootCount','ArmorLootCount','MeleeLootCount','RangedLootCount',
+                         'DukesLootCount','CraftingMagazinesLootCount','TreasureMapChance']},
+  SkillGainRate:      {vi:0, disables:['SkillPointsPerLevel']},
+};
+
+const CATEGORIES = ['Player','Entities','World','Resources','Crafting','Tasks','Traders','Misc'];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {};
+function initState() { OPTIONS.forEach(o => { state[o.id] = o.def; }); }
+
+// ── Encode / Decode ───────────────────────────────────────────────────────────
+function encode() {
+  const sorted = [...OPTIONS].sort((a,b) => a.enumId - b.enumId);
+  let r = 'A';
+  for (const o of sorted) {
+    if (state[o.id] !== o.def) {
+      r += String.fromCharCode(65 + Math.floor(o.enumId / 26));
+      r += String.fromCharCode(65 + (o.enumId % 26));
+      r += String.fromCharCode(65 + state[o.id]);
+    }
+  }
+  return r;
+}
+
+function decode(code) {
+  const c = (code || '').trim().toUpperCase();
+  if (!c.startsWith('A')) return null;
+  const byId = {};
+  OPTIONS.forEach(o => { byId[o.enumId] = o; });
+  const s = {};
+  OPTIONS.forEach(o => { s[o.id] = o.def; });
+  for (let i = 1; i + 2 <= c.length; i += 3) {
+    const eid = (c.charCodeAt(i) - 65) * 26 + (c.charCodeAt(i+1) - 65);
+    const vi  = c.charCodeAt(i+2) - 65;
+    const o   = byId[eid];
+    if (o && vi >= 0 && vi < o.vals.length) s[o.id] = vi;
+  }
+  return s;
+}
+
+// ── UI Build ──────────────────────────────────────────────────────────────────
+function buildUI() {
+  const tabsEl    = document.getElementById('categoryTabs');
+  const contentEl = document.getElementById('tabContent');
+
+  CATEGORIES.forEach((cat, idx) => {
+    // Tab button
+    const li  = document.createElement('li');
+    li.className = 'nav-item';
+    const btn = document.createElement('button');
+    btn.className    = 'nav-link' + (idx === 0 ? ' active' : '');
+    btn.id           = 'tab-btn-' + cat;
+    btn.dataset.bsToggle  = 'tab';
+    btn.dataset.bsTarget  = '#tab-' + cat;
+    btn.type         = 'button';
+    btn.innerHTML    = cat + '<span class="tab-badge d-none" id="badge-' + cat + '">0</span>';
+    li.appendChild(btn);
+    tabsEl.appendChild(li);
+
+    // Tab pane
+    const pane = document.createElement('div');
+    pane.className = 'tab-pane fade' + (idx === 0 ? ' show active' : '');
+    pane.id = 'tab-' + cat;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'groups-wrapper';
+
+    // Collect ordered groups for this category
+    const catOpts = OPTIONS.filter(o => o.cat === cat);
+    const seenGroups = [];
+    catOpts.forEach(o => { if (!seenGroups.includes(o.group)) seenGroups.push(o.group); });
+
+    seenGroups.forEach(grp => {
+      const section = document.createElement('div');
+      section.className = 'group-section';
+
+      const header = document.createElement('div');
+      header.className = 'group-header';
+      header.textContent = grp;
+      section.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'options-grid';
+      catOpts.filter(o => o.group === grp).forEach(opt => {
+        grid.appendChild(createRow(opt));
+      });
+      section.appendChild(grid);
+      wrapper.appendChild(section);
+    });
+
+    pane.appendChild(wrapper);
+    contentEl.appendChild(pane);
+  });
+}
+
+function createRow(opt) {
+  const row = document.createElement('div');
+  row.className = 'option-row';
+  row.id = 'row-' + opt.id;
+
+  const dot = document.createElement('span');
+  dot.className = 'option-dot';
+  dot.id = 'dot-' + opt.id;
+  row.appendChild(dot);
+
+  const label = document.createElement('span');
+  label.className = 'option-label';
+  label.textContent = opt.label;
+  label.title = opt.id;
+  row.appendChild(label);
+
+  // Per-option reset button
+  const resetBtn = document.createElement('button');
+  resetBtn.className = 'opt-reset';
+  resetBtn.title = 'Reset to default';
+  resetBtn.innerHTML = '&#8635;';
+  resetBtn.addEventListener('click', () => {
+    state[opt.id] = opt.def;
+    syncOne(opt);
+    refresh();
+  });
+  row.appendChild(resetBtn);
+
+  const ctrl = document.createElement('div');
+  ctrl.className = 'option-control';
+
+  if (opt.type === 'bool') {
+    const sw  = document.createElement('div');
+    sw.className = 'form-check form-switch mb-0';
+    const inp = document.createElement('input');
+    inp.type = 'checkbox'; inp.className = 'form-check-input'; inp.role = 'switch';
+    inp.id = 'opt-' + opt.id;
+    inp.checked = state[opt.id] === 1;
+    inp.addEventListener('change', () => { state[opt.id] = inp.checked ? 1 : 0; refresh(); });
+    sw.appendChild(inp);
+    ctrl.appendChild(sw);
+
+    const defHint = document.createElement('span');
+    defHint.className = 'bool-default';
+    defHint.textContent = 'def: ' + (opt.vals[opt.def] ? 'on' : 'off');
+    ctrl.appendChild(defHint);
+  } else {
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm';
+    sel.id = 'opt-' + opt.id;
+    opt.vals.forEach((v, i) => {
+      const o = document.createElement('option');
+      o.value = i;
+      o.textContent = (opt.labels ? opt.labels[i] : String(v)) + (i === opt.def ? ' ★' : '');
+      if (i === state[opt.id]) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', () => { state[opt.id] = parseInt(sel.value, 10); refresh(); });
+    ctrl.appendChild(sel);
+  }
+
+  row.appendChild(ctrl);
+  return row;
+}
+
+// ── Sync helpers ──────────────────────────────────────────────────────────────
+function syncOne(opt) {
+  const el = document.getElementById('opt-' + opt.id);
+  if (!el) return;
+  if (opt.type === 'bool') el.checked = state[opt.id] === 1;
+  else el.value = state[opt.id];
+}
+
+function syncAll() { OPTIONS.forEach(syncOne); }
+
+// ── Refresh ───────────────────────────────────────────────────────────────────
+function refresh() {
+  const code = encode();
+  document.getElementById('codeOutput').textContent = code;
+
+  let total = 0;
+  CATEGORIES.forEach(cat => {
+    const changed = OPTIONS.filter(o => o.cat === cat && state[o.id] !== o.def).length;
+    total += changed;
+    const badge = document.getElementById('badge-' + cat);
+    if (badge) { badge.textContent = changed; badge.classList.toggle('d-none', changed === 0); }
+    OPTIONS.filter(o => o.cat === cat).forEach(opt => {
+      const row = document.getElementById('row-' + opt.id);
+      if (row) row.classList.toggle('non-default', state[opt.id] !== opt.def);
+    });
+  });
+
+  const badge = document.getElementById('changeBadge');
+  if (total > 0) {
+    badge.textContent = total + ' custom setting' + (total !== 1 ? 's' : '');
+    badge.className = 'code-badge has-changes';
+  } else {
+    badge.textContent = 'All defaults';
+    badge.className = 'code-badge';
+  }
+
+  // Disable rules
+  for (const [id, rule] of Object.entries(DISABLE_RULES)) {
+    const off = state[id] === rule.vi;
+    rule.disables.forEach(tid => {
+      const row = document.getElementById('row-' + tid);
+      if (row) row.classList.toggle('opt-disabled', off);
+    });
+  }
+
+  history.replaceState(null, '', '#' + code);
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function copyCode() {
+  const code = document.getElementById('codeOutput').textContent;
+  navigator.clipboard.writeText(code)
+    .then(() => showToast('Code copied to clipboard.', 'success'))
+    .catch(() => showToast('Copy failed — select the code and copy manually.', 'warning'));
+}
+
+function importCode() {
+  const raw = document.getElementById('importInput').value.trim();
+  if (!raw) { showToast('Paste a SandboxCode first.', 'warning'); return; }
+  const s = decode(raw);
+  if (!s) { showToast('Invalid code — must start with "A".', 'danger'); return; }
+  Object.assign(state, s);
+  syncAll(); refresh();
+  document.getElementById('importInput').value = '';
+  showToast('Code decoded — settings updated.', 'success');
+}
+
+function resetAll() {
+  OPTIONS.forEach(o => { state[o.id] = o.def; });
+  syncAll(); refresh();
+  showToast('All settings reset to defaults.', 'secondary');
+}
+
+function applyToConfig() {
+  const code = document.getElementById('codeOutput').textContent;
+  fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({updates: {SandboxCode: code}}),
+  })
+    .then(r => r.json())
+    .then(d => d.ok ? showToast('SandboxCode saved to server config.', 'success')
+                    : showToast('Error: ' + d.error, 'danger'))
+    .catch(e => showToast('Network error: ' + e.message, 'danger'));
+}
+
+function loadFromConfig() {
+  fetch('/api/config')
+    .then(r => r.json())
+    .then(d => {
+      const code = (d.values || {}).SandboxCode || '';
+      if (!code) { showToast('No SandboxCode in current config.', 'warning'); return; }
+      const s = decode(code);
+      if (!s) { showToast('Config SandboxCode is invalid.', 'danger'); return; }
+      Object.assign(state, s);
+      syncAll(); refresh();
+      showToast('Loaded code from server config.', 'success');
+    })
+    .catch(e => showToast('Network error: ' + e.message, 'danger'));
+}
+
+document.getElementById('importInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') importCode();
+});
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const el = document.getElementById('mainToast');
+  el.className = 'toast align-items-center text-bg-' + type + ' border-0';
+  document.getElementById('toastMsg').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 3000}).show();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+initState();
+buildUI();
+
+const urlHash = location.hash.replace('#', '');
+if (urlHash.startsWith('A') && urlHash.length > 1) {
+  const s = decode(urlHash);
+  if (s) { Object.assign(state, s); syncAll(); }
+}
+refresh();
+</script>
+</body>
+</html>

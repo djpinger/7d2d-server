@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>7D2D Panel — Saves</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/darkly/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    html, body { height: 100%; background-color: #1a1a2e; }
+
+    .app-navbar {
+      background-color: #111827;
+      border-bottom: 2px solid #c0392b;
+      padding: 0.5rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .navbar-brand-text { font-size: 1.15rem; font-weight: 700; color: #fff; letter-spacing: 0.03em; }
+    .navbar-brand-text span { color: #e63946; }
+    .navbar-meta { font-size: 0.8rem; color: #6c757d; margin-left: 0.75rem; }
+
+    .content-area { padding: 1.5rem 2rem; max-width: 1100px; }
+
+    /* ── World groups ────────────────────────────── */
+    .world-group { margin-bottom: 2rem; }
+    .world-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 1rem;
+      background-color: #1f2b3e;
+      border: 1px solid #2d3f57;
+      border-radius: 8px 8px 0 0;
+      border-bottom: none;
+    }
+    .world-title {
+      font-weight: 700;
+      font-size: 1rem;
+      color: #f8f9fa;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .world-body {
+      border: 1px solid #2d3f57;
+      border-radius: 0 0 8px 8px;
+      overflow: hidden;
+    }
+
+    /* ── Save rows ───────────────────────────────── */
+    .save-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto auto;
+      align-items: center;
+      gap: 1.25rem;
+      padding: 0.85rem 1rem;
+      background-color: #16213e;
+      border-bottom: 1px solid #2d3f57;
+    }
+    .save-row:last-child { border-bottom: none; }
+    .save-row:hover { background-color: #1f2b3e; }
+
+    .save-name {
+      font-weight: 600;
+      color: #e9ecef;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .save-meta {
+      font-size: 0.78rem;
+      color: #5a7a9a;
+      margin-top: 0.15rem;
+    }
+    .stat-cell { text-align: center; font-size: 0.85rem; color: #adb5bd; }
+    .stat-label { font-size: 0.7rem; color: #4a6080; text-transform: uppercase; letter-spacing: 0.04em; }
+
+    .badge-active {
+      background-color: #1a472a;
+      color: #2ecc71;
+      border: 1px solid #2ecc71;
+      font-size: 0.7rem;
+      padding: 0.2em 0.5em;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .badge-rwg {
+      background-color: #1a2a47;
+      color: #3498db;
+      border: 1px solid #3498db;
+      font-size: 0.7rem;
+      padding: 0.2em 0.5em;
+      border-radius: 4px;
+    }
+
+    .action-buttons { display: flex; gap: 0.4rem; }
+
+    /* ── Empty state ─────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: #4a6080;
+    }
+
+    /* ── Confirm modal ───────────────────────────── */
+    .modal-content { background-color: #1f2b3e; border-color: #2d3f57; }
+    .modal-header  { border-bottom-color: #2d3f57; }
+    .modal-footer  { border-top-color: #2d3f57; }
+
+    .wipe-details {
+      background-color: #0d1117;
+      border: 1px solid #2d3f57;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.82rem;
+      color: #adb5bd;
+      margin-top: 0.75rem;
+    }
+    .wipe-details li { margin-bottom: 0.2rem; }
+
+    .danger-zone {
+      background: #2d0909;
+      border: 1px solid #e63946;
+      border-radius: 6px;
+      padding: 0.6rem 1rem;
+      font-size: 0.83rem;
+      color: #e63946;
+      margin-top: 0.75rem;
+    }
+
+    .toast-container { z-index: 9999; }
+  </style>
+</head>
+<body>
+
+<div class="app-navbar">
+  <div class="d-flex align-items-center">
+    <span class="navbar-brand-text"><span>7D2D</span> Panel</span>
+    <span class="navbar-meta">{{ server_name }}</span>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/dashboard" class="btn btn-sm btn-outline-secondary"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+    <a href="/config" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-sliders me-1"></i>Config
+    </a>
+    <a href="/saves" class="btn btn-sm btn-danger">
+      <i class="bi bi-hdd me-1"></i>Saves
+    </a>
+    <a href="/admin" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-shield-lock me-1"></i>Admin
+    </a>
+    <a href="/sandbox" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-code-square me-1"></i>Sandbox
+    </a>
+    <a href="/console" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-terminal me-1"></i>Console
+    </a>
+    <a href="/players" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-people me-1"></i>Players
+    </a>
+    <a href="/give" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-box-seam me-1"></i>Give
+    </a>
+    <a href="/teleport" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-geo-alt me-1"></i>Teleport
+    </a>
+    <a href="/logout" class="btn btn-sm btn-outline-danger ms-1">
+      <i class="bi bi-box-arrow-right me-1"></i>Logout
+    </a>
+  </div>
+</div>
+
+<div class="content-area">
+
+  <!-- Toast -->
+  <div class="toast-container position-fixed top-0 end-0 p-3">
+    <div id="mainToast" class="toast" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMsg"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <h5 class="mb-4" style="color:#f8f9fa">
+    Save Manager
+    <small class="text-muted fs-6 fw-normal ms-2">{{ saves|length }} save(s)</small>
+  </h5>
+
+  {%- if not saves %}
+  <div class="empty-state">
+    <i class="bi bi-hdd" style="font-size:2.5rem"></i>
+    <p class="mt-2">No saves found.</p>
+  </div>
+
+  {%- else %}
+
+  {#- Group saves by world #}
+  {%- set worlds = [] %}
+  {%- for s in saves %}
+    {%- if s.world not in worlds %}
+      {%- set _ = worlds.append(s.world) %}
+    {%- endif %}
+  {%- endfor %}
+
+  {%- for world in worlds %}
+  {%- set world_saves = saves | selectattr("world", "equalto", world) | list %}
+  {%- set is_rwg = world_saves[0].is_rwg %}
+
+  <div class="world-group">
+    <div class="world-header">
+      <div class="world-title">
+        <i class="bi {{ 'bi-cpu' if is_rwg else 'bi-map' }}"></i>
+        {{ world }}
+        {%- if is_rwg %}
+        <span class="badge-rwg">RWG</span>
+        {%- endif %}
+      </div>
+      {%- if is_rwg %}
+      <button class="btn btn-sm btn-outline-danger"
+        onclick='confirmDeleteWorld({{ world | tojson }})'>
+        <i class="bi bi-trash3 me-1"></i>Delete World
+      </button>
+      {%- endif %}
+    </div>
+
+    <div class="world-body">
+      {%- for s in world_saves %}
+      <div class="save-row">
+        <div>
+          <div class="save-name">
+            <i class="bi bi-folder2-open" style="color:#5a7a9a"></i>
+            {{ s.save }}
+            {%- if s.is_current %}
+            <span class="badge-active">ACTIVE</span>
+            {%- endif %}
+          </div>
+          <div class="save-meta">Last modified {{ s.last_mod }}</div>
+        </div>
+        <div class="stat-cell">
+          <div>{{ s.size }}</div>
+          <div class="stat-label">Size</div>
+        </div>
+        <div class="stat-cell">
+          <div>{{ s.players }}</div>
+          <div class="stat-label">Players</div>
+        </div>
+        <div class="action-buttons">
+          <button class="btn btn-sm btn-outline-warning"
+            onclick='confirmWipe({{ s.world | tojson }}, {{ s.save | tojson }}, {{ s.is_current | tojson }})'>
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Wipe
+          </button>
+          <button class="btn btn-sm btn-outline-danger"
+            onclick='confirmDelete({{ s.world | tojson }}, {{ s.save | tojson }}, {{ s.is_current | tojson }})'>
+            <i class="bi bi-trash3 me-1"></i>Delete
+          </button>
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+  </div>
+  {%- endfor %}
+
+  {%- endif %}
+</div>
+
+<!-- ── CONFIRM MODAL ─────────────────────────────────────────────────────── -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmTitle">Confirm</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger" id="confirmBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+let pendingAction = null;
+
+// ── Wipe ──────────────────────────────────────────────────────────────────────
+function confirmWipe(world, save, isCurrent) {
+  document.getElementById('confirmTitle').textContent = `Wipe Save — ${save}`;
+  document.getElementById('confirmBtn').textContent = 'Wipe Save';
+  document.getElementById('confirmBtn').className = 'btn btn-warning';
+
+  let html = `<p>This will <strong>reset all gameplay progress</strong> on <strong>${world} / ${save}</strong> while keeping the world terrain intact. The server will start fresh on the next launch.</p>
+  <div class="wipe-details">
+    <strong>What gets deleted:</strong>
+    <ul class="mt-1 mb-0">
+      <li>All region chunks (terrain modifications, built structures)</li>
+      <li>Player files (inventory, skills, progression)</li>
+      <li>Vehicles, drones, and turrets</li>
+      <li>Explored map data</li>
+      <li>Mod data (PrismaCore / CSMM player records)</li>
+    </ul>
+  </div>
+  <div class="wipe-details mt-2" style="border-color:#2ecc71;color:#2ecc71">
+    <strong>What is kept:</strong>
+    <ul class="mt-1 mb-0">
+      <li>Generated world terrain (no re-generation needed)</li>
+    </ul>
+  </div>`;
+
+  if (isCurrent) {
+    html += `<div class="danger-zone mt-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>
+      This is the <strong>currently active save</strong>. Stop the server before wiping.</div>`;
+  }
+
+  document.getElementById('confirmBody').innerHTML = html;
+  pendingAction = () => doAction('wipe', world, save);
+  modal.show();
+}
+
+// ── Delete save ───────────────────────────────────────────────────────────────
+function confirmDelete(world, save, isCurrent) {
+  document.getElementById('confirmTitle').textContent = `Delete Save — ${save}`;
+  document.getElementById('confirmBtn').textContent = 'Delete Save';
+  document.getElementById('confirmBtn').className = 'btn btn-danger';
+
+  let html = `<p>Permanently delete the save <strong>${world} / ${save}</strong>. This cannot be undone.</p>`;
+  if (isCurrent) {
+    html += `<div class="danger-zone"><i class="bi bi-exclamation-triangle-fill me-1"></i>
+      This is the <strong>currently active save</strong>. Stop the server before deleting.</div>`;
+  }
+
+  document.getElementById('confirmBody').innerHTML = html;
+  pendingAction = () => doAction('delete', world, save);
+  modal.show();
+}
+
+// ── Delete world ──────────────────────────────────────────────────────────────
+function confirmDeleteWorld(world) {
+  document.getElementById('confirmTitle').textContent = `Delete World — ${world}`;
+  document.getElementById('confirmBtn').textContent = 'Delete World';
+  document.getElementById('confirmBtn').className = 'btn btn-danger';
+
+  document.getElementById('confirmBody').innerHTML = `
+    <p>Permanently delete the generated world <strong>${world}</strong> and <strong>all of its saves</strong>. This cannot be undone.</p>
+    <div class="danger-zone"><i class="bi bi-exclamation-triangle-fill me-1"></i>
+      The world terrain will be gone. If the server still references this world it will attempt to regenerate it on next launch.</div>`;
+
+  pendingAction = () => doAction('delete_world', world, null);
+  modal.show();
+}
+
+// ── Execute ───────────────────────────────────────────────────────────────────
+document.getElementById('confirmBtn').addEventListener('click', () => {
+  if (pendingAction) pendingAction();
+});
+
+function doAction(action, world, save) {
+  modal.hide();
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = true;
+
+  fetch(`/api/saves/${action}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({world, save}),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        showToast(
+          action === 'wipe'         ? 'Save wiped successfully.' :
+          action === 'delete'       ? 'Save deleted.' :
+                                      'World deleted.',
+          'success'
+        );
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast('Error: ' + data.error, 'danger');
+      }
+    })
+    .catch(err => showToast('Network error: ' + err.message, 'danger'))
+    .finally(() => { btn.disabled = false; });
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const el = document.getElementById('mainToast');
+  el.className = `toast align-items-center text-bg-${type} border-0`;
+  document.getElementById('toastMsg').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
+}
+</script>
+</body>
+</html>

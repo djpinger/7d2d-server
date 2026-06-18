@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>7D2D Panel — Config</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/darkly/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    html, body { height: 100%; overflow: hidden; background-color: #1a1a2e; }
+
+    /* ── Layout ─────────────────────────────────── */
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .app-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ────────────────────────────────── */
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+      background-color: #1f2b3e;
+      border-right: 1px solid #2d3f57;
+      overflow-y: auto;
+      padding: 0.75rem 0.5rem;
+    }
+    .sidebar .nav-link {
+      color: #adb5bd;
+      border-radius: 6px;
+      padding: 0.45rem 0.75rem;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      transition: background 0.15s, color 0.15s;
+    }
+    .sidebar .nav-link:hover { background-color: #2d3f57; color: #f8f9fa; }
+    .sidebar .nav-link.active { background-color: #c0392b; color: #fff; font-weight: 600; }
+    .sidebar .nav-link .dirty-dot {
+      width: 7px; height: 7px;
+      background: #f39c12;
+      border-radius: 50%;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    /* ── Content area ───────────────────────────── */
+    .content-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem 2rem;
+      background-color: #1a1a2e;
+    }
+
+    /* ── Save bar ───────────────────────────────── */
+    .save-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background-color: #1a1a2e;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #2d3f57;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .save-bar h5 { margin: 0; font-size: 1.1rem; color: #f8f9fa; }
+
+    /* ── Field cards ────────────────────────────── */
+    .fields-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      max-width: 900px;
+    }
+    .group-section { margin-bottom: 1.5rem; }
+    .group-header {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #5a7a9a;
+      padding-bottom: 0.35rem;
+      margin-bottom: 0.75rem;
+      border-bottom: 1px solid #2d3f57;
+      max-width: 900px;
+    }
+    .field-card {
+      background-color: #1f2b3e;
+      border: 1px solid #2d3f57;
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+    }
+    .field-card label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #cdd3db;
+      margin-bottom: 0.4rem;
+      display: block;
+    }
+    .field-desc {
+      font-size: 0.77rem;
+      color: #6c757d;
+      margin-top: 0.35rem;
+      line-height: 1.4;
+    }
+    .form-control, .form-select {
+      background-color: #253347;
+      border-color: #3a5068;
+      color: #e9ecef;
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: #253347;
+      border-color: #e63946;
+      color: #e9ecef;
+      box-shadow: 0 0 0 0.2rem rgba(230, 57, 70, 0.25);
+    }
+    .form-control::placeholder { color: #5a7a9a; }
+
+    /* ── Boolean switch ─────────────────────────── */
+    .bool-field {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding-top: 0.25rem;
+    }
+    .form-check-input:checked {
+      background-color: #e63946;
+      border-color: #e63946;
+    }
+
+    /* ── Navbar ─────────────────────────────────── */
+    .app-navbar {
+      background-color: #111827;
+      border-bottom: 2px solid #c0392b;
+      padding: 0.5rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .navbar-brand-text {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.03em;
+    }
+    .navbar-brand-text span { color: #e63946; }
+    .navbar-meta { font-size: 0.8rem; color: #6c757d; margin-left: 0.75rem; }
+
+    /* ── Restart notice ─────────────────────────── */
+    .restart-notice {
+      background-color: #2d2003;
+      border: 1px solid #f39c12;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-size: 0.83rem;
+      color: #f39c12;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    /* ── Toast ──────────────────────────────────── */
+    .toast-container { z-index: 9999; }
+  </style>
+</head>
+<body>
+
+{%- macro render_field(name, value, meta, desc, ftype) %}
+{%- set label = meta.get('label', name) %}
+<div class="field-card" data-field="{{ name }}">
+  {%- if ftype == 'boolean' %}
+  <label for="field-{{ name }}">{{ label }}</label>
+  <div class="bool-field">
+    <div class="form-check form-switch mb-0">
+      <input class="form-check-input" type="checkbox" role="switch"
+             id="field-{{ name }}" name="{{ name }}"
+             {% if value.lower() == 'true' %}checked{% endif %}>
+    </div>
+    <span class="bool-label small text-muted" id="bool-label-{{ name }}">
+      {{ 'Enabled' if value.lower() == 'true' else 'Disabled' }}
+    </span>
+  </div>
+
+  {%- elif ftype == 'select' %}
+  <label for="field-{{ name }}">{{ label }}</label>
+  <select class="form-select form-select-sm" id="field-{{ name }}" name="{{ name }}">
+    {%- for opt in meta.get('options', []) %}
+      {%- if opt is mapping %}
+    <option value="{{ opt.value }}"{% if value == opt.value %} selected{% endif %}>{{ opt.label }}</option>
+      {%- else %}
+    <option value="{{ opt }}"{% if value == opt %} selected{% endif %}>{{ opt }}</option>
+      {%- endif %}
+    {%- endfor %}
+    {#- If current value isn't in the options list, add it so it's not lost #}
+    {%- set known = meta.get('options', []) | map(attribute='value', default=none) | list %}
+    {%- set known_str = meta.get('options', []) %}
+    {%- set found = namespace(v=false) %}
+    {%- for opt in meta.get('options', []) %}
+      {%- if (opt is mapping and opt.value == value) or (opt is not mapping and opt == value) %}
+        {%- set found.v = true %}
+      {%- endif %}
+    {%- endfor %}
+    {%- if not found.v and value %}
+    <option value="{{ value }}" selected>{{ value }} (current)</option>
+    {%- endif %}
+  </select>
+
+  {%- elif ftype == 'textarea' %}
+  <label for="field-{{ name }}">{{ label }}</label>
+  <textarea class="form-control form-control-sm" id="field-{{ name }}" name="{{ name }}"
+            rows="3">{{ value }}</textarea>
+
+  {%- elif ftype == 'number' %}
+  <label for="field-{{ name }}">{{ label }}</label>
+  <input type="number" class="form-control form-control-sm"
+         id="field-{{ name }}" name="{{ name }}" value="{{ value }}">
+
+  {%- else %}
+  <label for="field-{{ name }}">{{ label }}</label>
+  <input type="text" class="form-control form-control-sm"
+         id="field-{{ name }}" name="{{ name }}" value="{{ value }}">
+  {%- endif %}
+
+  {%- if desc %}
+  <div class="field-desc">{{ desc }}</div>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+<div class="app-shell">
+
+  <!-- Navbar -->
+  <div class="app-navbar">
+    <div class="d-flex align-items-center">
+      <span class="navbar-brand-text"><span>7D2D</span> Panel</span>
+      <span class="navbar-meta">{{ server_name }}</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a href="/dashboard" class="btn btn-sm btn-outline-secondary"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+    <a href="/config" class="btn btn-sm btn-danger">
+        <i class="bi bi-sliders me-1"></i>Config
+      </a>
+      <a href="/saves" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-hdd me-1"></i>Saves
+      </a>
+      <a href="/admin" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-shield-lock me-1"></i>Admin
+      </a>
+      <a href="/sandbox" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-code-square me-1"></i>Sandbox
+      </a>
+      <a href="/console" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-terminal me-1"></i>Console
+      </a>
+      <a href="/players" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-people me-1"></i>Players
+      </a>
+      <a href="/give" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-box-seam me-1"></i>Give
+      </a>
+      <a href="/teleport" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-geo-alt me-1"></i>Teleport
+      </a>
+      <a href="/logout" class="btn btn-sm btn-outline-danger ms-1">
+        <i class="bi bi-box-arrow-right me-1"></i>Logout
+      </a>
+    </div>
+  </div>
+
+  <div class="app-body">
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <ul class="nav flex-column" id="sectionNav">
+        {%- for section in sections %}
+        <li class="nav-item">
+          <a class="nav-link{% if loop.first %} active{% endif %}"
+             href="#{{ section.id }}"
+             data-section="{{ section.id }}"
+             id="nav-{{ section.id }}">
+            <i class="bi {{ section.icon }}"></i>
+            {{ section.label }}
+          </a>
+        </li>
+        {%- endfor %}
+      </ul>
+    </nav>
+
+    <!-- Content -->
+    <div class="content-area">
+
+      <!-- Toast -->
+      <div class="toast-container position-fixed top-0 end-0 p-3">
+        <div id="mainToast" class="toast" role="alert" aria-live="assertive">
+          <div class="d-flex">
+            <div class="toast-body" id="toastMsg">Saved!</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                    data-bs-dismiss="toast"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save bar -->
+      <div class="save-bar">
+        <h5 id="sectionTitle">—</h5>
+        <button class="btn btn-danger btn-sm px-3" id="saveBtn" onclick="saveConfig()">
+          <i class="bi bi-floppy me-1"></i>Save Changes
+        </button>
+      </div>
+
+      <!-- Restart notice -->
+      <div class="restart-notice">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        Config changes take effect after a server restart.
+      </div>
+
+      <!-- Section panels -->
+      <form id="configForm">
+        {%- for section in sections %}
+        <div class="section-panel{% if not loop.first %} d-none{% endif %}"
+             id="panel-{{ section.id }}">
+          {%- if section.groups is defined %}
+            {%- for group in section.groups %}
+            <div class="group-section">
+              <div class="group-header">{{ group.label }}</div>
+              <div class="fields-grid">
+                {%- for name in group.fields %}
+                {%- if name in values %}
+                {{- render_field(
+                    name,
+                    values[name],
+                    field_meta.get(name, {}),
+                    descriptions.get(name, ''),
+                    field_types.get(name, 'text')
+                ) }}
+                {%- endif %}
+                {%- endfor %}
+              </div>
+            </div>
+            {%- endfor %}
+          {%- else %}
+          <div class="fields-grid">
+            {%- for name in section.fields %}
+            {%- if name in values %}
+            {{- render_field(
+                name,
+                values[name],
+                field_meta.get(name, {}),
+                descriptions.get(name, ''),
+                field_types.get(name, 'text')
+            ) }}
+            {%- endif %}
+            {%- endfor %}
+          </div>
+          {%- endif %}
+        </div>
+        {%- endfor %}
+      </form>
+
+    </div><!-- /content-area -->
+  </div><!-- /app-body -->
+</div><!-- /app-shell -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Section navigation ────────────────────────────────────────────────────────
+const dirtyMap = {};  // section id → true if dirty
+
+function showSection(id) {
+  document.querySelectorAll('.section-panel').forEach(el => el.classList.add('d-none'));
+  const panel = document.getElementById('panel-' + id);
+  if (panel) panel.classList.remove('d-none');
+
+  document.querySelectorAll('#sectionNav .nav-link').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === id);
+  });
+
+  const link = document.querySelector(`[data-section="${id}"]`);
+  document.getElementById('sectionTitle').textContent = link
+    ? link.textContent.trim()
+    : '';
+}
+
+document.querySelectorAll('#sectionNav .nav-link').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const id = link.dataset.section;
+    history.replaceState(null, '', '#' + id);
+    showSection(id);
+  });
+});
+
+// Restore section from URL hash
+(function () {
+  const hash = location.hash.replace('#', '');
+  const valid = document.getElementById('panel-' + hash);
+  if (hash && valid) {
+    showSection(hash);
+  } else {
+    const first = document.querySelector('[data-section]');
+    if (first) showSection(first.dataset.section);
+  }
+})();
+
+
+// ── Dirty tracking ────────────────────────────────────────────────────────────
+document.getElementById('configForm').addEventListener('change', e => {
+  const card = e.target.closest('.field-card');
+  if (!card) return;
+  const name = card.dataset.field;
+
+  // Update bool label for switches
+  if (e.target.type === 'checkbox') {
+    const lbl = document.getElementById('bool-label-' + e.target.name);
+    if (lbl) lbl.textContent = e.target.checked ? 'Enabled' : 'Disabled';
+  }
+
+  // Mark parent section dirty
+  const panel = e.target.closest('.section-panel');
+  if (!panel) return;
+  const sectionId = panel.id.replace('panel-', '');
+  if (!dirtyMap[sectionId]) {
+    dirtyMap[sectionId] = true;
+    const navLink = document.getElementById('nav-' + sectionId);
+    if (navLink && !navLink.querySelector('.dirty-dot')) {
+      const dot = document.createElement('span');
+      dot.className = 'dirty-dot';
+      navLink.appendChild(dot);
+    }
+  }
+});
+
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+function saveConfig() {
+  const form = document.getElementById('configForm');
+  const updates = {};
+
+  form.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
+    if (!el.name) return;
+    if (el.type === 'checkbox') {
+      updates[el.name] = el.checked ? 'true' : 'false';
+    } else {
+      updates[el.name] = el.value;
+    }
+  });
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+
+  fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({updates}),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        showToast('Settings saved successfully.', 'success');
+        // Clear dirty indicators
+        Object.keys(dirtyMap).forEach(id => delete dirtyMap[id]);
+        document.querySelectorAll('.dirty-dot').forEach(el => el.remove());
+      } else {
+        showToast('Error: ' + data.error, 'danger');
+      }
+    })
+    .catch(err => showToast('Network error: ' + err.message, 'danger'))
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Save Changes';
+    });
+}
+
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const el = document.getElementById('mainToast');
+  el.className = `toast align-items-center text-bg-${type} border-0`;
+  document.getElementById('toastMsg').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
+}
+</script>
+</body>
+</html>

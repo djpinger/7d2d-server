@@ -1,0 +1,23 @@
+services:
+  7d2d:
+    build: .
+    container_name: 7d2d
+    environment:
+      - PANEL_PASSWORD=changeme
+      - SECRET_KEY=changeme-use-a-long-random-string
+      - GAME_BRANCH=public                  # public | latest_experimental
+      - GAME_API_TOKEN_NAME=panel
+      - GAME_API_SECRET=changeme-api-secret
+    volumes:
+      - ./data/serverfiles:/serverfiles     # Game installation (SteamCMD target)
+      - ./data/gamedata:/gamedata           # Saves, worlds, serveradmin.xml
+      - ./data/config:/config              # sdtdserver.xml, teleport_data.json
+    ports:
+      - "8090:8090"                        # Web panel
+      - "26900:26900/tcp"
+      - "26900:26900/udp"
+      - "26901:26901/udp"
+      - "26902:26902/udp"
+      - "18080:8080"                       # Game web API (optional external access)
+    restart: unless-stopped
+    stop_grace_period: 90s                 # Give the game server time to save on compose stop

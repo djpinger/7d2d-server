@@ -1,0 +1,532 @@
+{%- macro perm_badge(level) %}
+{%- set lvl = level | int %}
+{%- if lvl == 0 %}
+<span class="perm-badge" style="background:#c0392b;color:#fff">0 Admin</span>
+{%- elif lvl <= 100 %}
+<span class="perm-badge" style="background:#e67e22;color:#fff">{{ level }} Mod</span>
+{%- elif lvl < 1000 %}
+<span class="perm-badge" style="background:#2c3e50;color:#adb5bd">{{ level }}</span>
+{%- else %}
+<span class="perm-badge" style="background:#1f2b3e;color:#6c757d">{{ level }} Player</span>
+{%- endif %}
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>7D2D Panel — Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/darkly/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    html, body { height: 100%; background-color: #1a1a2e; }
+    .app-navbar {
+      background-color: #111827;
+      border-bottom: 2px solid #c0392b;
+      padding: 0.5rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .navbar-brand-text { font-size: 1.15rem; font-weight: 700; color: #fff; letter-spacing: 0.03em; }
+    .navbar-brand-text span { color: #e63946; }
+    .navbar-meta { font-size: 0.8rem; color: #6c757d; margin-left: 0.75rem; }
+
+    .content-area { padding: 1.5rem 2rem; max-width: 1200px; }
+
+    /* ── Tabs ───────────────────────────────────── */
+    .nav-tabs { border-bottom-color: #2d3f57; }
+    .nav-tabs .nav-link { color: #adb5bd; border-color: transparent; }
+    .nav-tabs .nav-link:hover { color: #f8f9fa; border-color: transparent; background: #1f2b3e; }
+    .nav-tabs .nav-link.active {
+      color: #fff;
+      background-color: #1f2b3e;
+      border-color: #2d3f57 #2d3f57 #1f2b3e;
+    }
+
+    /* ── Tables ─────────────────────────────────── */
+    .tab-pane { padding-top: 1.25rem; }
+    .table { color: #e9ecef; }
+    .table thead th { color: #adb5bd; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; border-color: #2d3f57; }
+    .table td { border-color: #2d3f57; vertical-align: middle; font-size: 0.9rem; }
+    .table tbody tr:hover { background-color: #1f2b3e; }
+    .table .badge-platform { font-size: 0.75rem; }
+    .table .perm-badge {
+      display: inline-block;
+      padding: 0.2em 0.55em;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    /* ── Section header ──────────────────────────── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .section-header h6 { margin: 0; color: #adb5bd; font-size: 0.83rem; }
+
+    /* ── Empty state ─────────────────────────────── */
+    .empty-state { color: #4a6080; font-size: 0.88rem; padding: 1.5rem 0; text-align: center; }
+
+    /* ── Whitelist warning ───────────────────────── */
+    .whitelist-warn {
+      background: #2d1f03;
+      border: 1px solid #e67e22;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-size: 0.83rem;
+      color: #e67e22;
+      margin-bottom: 1rem;
+    }
+
+    /* ── Form controls in modals ─────────────────── */
+    .modal-content { background-color: #1f2b3e; border-color: #2d3f57; }
+    .modal-header { border-bottom-color: #2d3f57; }
+    .modal-footer { border-top-color: #2d3f57; }
+    .form-control, .form-select {
+      background-color: #253347; border-color: #3a5068; color: #e9ecef;
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: #253347; border-color: #e63946; color: #e9ecef;
+      box-shadow: 0 0 0 0.2rem rgba(230,57,70,.25);
+    }
+    .form-label { font-size: 0.85rem; color: #cdd3db; }
+    .form-text { color: #5a7a9a !important; }
+
+    .toast-container { z-index: 9999; }
+  </style>
+</head>
+<body>
+
+<div class="app-navbar">
+  <div class="d-flex align-items-center">
+    <span class="navbar-brand-text"><span>7D2D</span> Panel</span>
+    <span class="navbar-meta">{{ server_name }}</span>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/dashboard" class="btn btn-sm btn-outline-secondary"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+    <a href="/config" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-sliders me-1"></i>Config
+    </a>
+    <a href="/saves" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-hdd me-1"></i>Saves
+    </a>
+    <a href="/admin" class="btn btn-sm btn-danger">
+      <i class="bi bi-shield-lock me-1"></i>Admin
+    </a>
+    <a href="/sandbox" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-code-square me-1"></i>Sandbox
+    </a>
+    <a href="/console" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-terminal me-1"></i>Console
+    </a>
+    <a href="/players" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-people me-1"></i>Players
+    </a>
+    <a href="/give" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-box-seam me-1"></i>Give
+    </a>
+    <a href="/teleport" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-geo-alt me-1"></i>Teleport
+    </a>
+    <a href="/logout" class="btn btn-sm btn-outline-danger ms-1">
+      <i class="bi bi-box-arrow-right me-1"></i>Logout
+    </a>
+  </div>
+</div>
+
+<div class="content-area">
+
+  <!-- Toast -->
+  <div class="toast-container position-fixed top-0 end-0 p-3">
+    <div id="mainToast" class="toast" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMsg"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <h5 class="mb-3" style="color:#f8f9fa">Admin Manager
+    <small class="text-muted fs-6 fw-normal ms-2">serveradmin.xml</small>
+  </h5>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs" id="adminTabs">
+    <li class="nav-item">
+      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-users">
+        <i class="bi bi-person-badge me-1"></i>Users
+        <span class="badge bg-secondary ms-1">{{ data.users|length }}</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-whitelist">
+        <i class="bi bi-check-circle me-1"></i>Whitelist
+        <span class="badge bg-secondary ms-1">{{ data.whitelist|length }}</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-blacklist">
+        <i class="bi bi-x-circle me-1"></i>Blacklist
+        <span class="badge bg-secondary ms-1">{{ data.blacklist|length }}</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-commands">
+        <i class="bi bi-terminal me-1"></i>Commands
+        <span class="badge bg-secondary ms-1">{{ data.commands|length }}</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-tokens">
+        <i class="bi bi-key me-1"></i>API Tokens
+        <span class="badge bg-secondary ms-1">{{ data.apitokens|length }}</span>
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+
+    <!-- ── USERS ──────────────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="tab-users">
+      <div class="section-header">
+        <h6>Admins &amp; moderators. Permission 0 = full admin, 1000 = default player.</h6>
+        <button class="btn btn-sm btn-danger" onclick="openModal('users')">
+          <i class="bi bi-plus-lg me-1"></i>Add User
+        </button>
+      </div>
+      <table class="table table-hover" id="tbl-users">
+        <thead><tr>
+          <th>Platform</th><th>User ID</th><th>Name</th><th>Permission</th><th></th>
+        </tr></thead>
+        <tbody>
+        {%- for u in data.users %}
+        <tr>
+          <td><span class="badge bg-secondary badge-platform">{{ u.platform }}</span></td>
+          <td><code style="color:#7ec8e3">{{ u.userid }}</code></td>
+          <td>{{ u.name or '—' }}</td>
+          <td>{{ perm_badge(u.permission_level) }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger"
+              onclick='deleteEntry("users", {{ {"platform": u.platform, "userid": u.userid} | tojson }})'>
+              <i class="bi bi-trash3"></i>
+            </button>
+          </td>
+        </tr>
+        {%- else %}
+        <tr><td colspan="5" class="empty-state">No users defined.</td></tr>
+        {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── WHITELIST ──────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-whitelist">
+      {%- if data.whitelist %}
+      <div class="whitelist-warn">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>Whitelist mode is ACTIVE.</strong> Only listed players can join.
+      </div>
+      {%- endif %}
+      <div class="section-header">
+        <h6>When non-empty, only these players may join the server.</h6>
+        <button class="btn btn-sm btn-danger" onclick="openModal('whitelist')">
+          <i class="bi bi-plus-lg me-1"></i>Add to Whitelist
+        </button>
+      </div>
+      <table class="table table-hover" id="tbl-whitelist">
+        <thead><tr><th>Platform</th><th>User ID</th><th>Name</th><th></th></tr></thead>
+        <tbody>
+        {%- for u in data.whitelist %}
+        <tr>
+          <td><span class="badge bg-secondary badge-platform">{{ u.platform }}</span></td>
+          <td><code style="color:#7ec8e3">{{ u.userid }}</code></td>
+          <td>{{ u.name or '—' }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger"
+              onclick='deleteEntry("whitelist", {{ {"platform": u.platform, "userid": u.userid} | tojson }})'>
+              <i class="bi bi-trash3"></i>
+            </button>
+          </td>
+        </tr>
+        {%- else %}
+        <tr><td colspan="4" class="empty-state">Whitelist is empty — all players may join.</td></tr>
+        {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── BLACKLIST ──────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-blacklist">
+      <div class="section-header">
+        <h6>Banned players. Leave unban date empty for permanent bans.</h6>
+        <button class="btn btn-sm btn-danger" onclick="openModal('blacklist')">
+          <i class="bi bi-plus-lg me-1"></i>Ban Player
+        </button>
+      </div>
+      <table class="table table-hover" id="tbl-blacklist">
+        <thead><tr><th>Platform</th><th>User ID</th><th>Name</th><th>Unban Date</th><th>Reason</th><th></th></tr></thead>
+        <tbody>
+        {%- for b in data.blacklist %}
+        <tr>
+          <td><span class="badge bg-secondary badge-platform">{{ b.platform }}</span></td>
+          <td><code style="color:#7ec8e3">{{ b.userid }}</code></td>
+          <td>{{ b.name or '—' }}</td>
+          <td>{{ b.unbandate or '—' }}</td>
+          <td>{{ b.reason or '—' }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger"
+              onclick='deleteEntry("blacklist", {{ {"platform": b.platform, "userid": b.userid} | tojson }})'>
+              <i class="bi bi-trash3"></i>
+            </button>
+          </td>
+        </tr>
+        {%- else %}
+        <tr><td colspan="6" class="empty-state">No banned players.</td></tr>
+        {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── COMMANDS ───────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-commands">
+      <div class="section-header">
+        <h6>Minimum permission level required to run each command. Commands not listed default to 0 (admin only).</h6>
+        <button class="btn btn-sm btn-danger" onclick="openModal('commands')">
+          <i class="bi bi-plus-lg me-1"></i>Add Command
+        </button>
+      </div>
+      <table class="table table-hover" id="tbl-commands">
+        <thead><tr><th>Command</th><th>Permission Level</th><th></th></tr></thead>
+        <tbody>
+        {%- for c in data.commands %}
+        <tr>
+          <td><code style="color:#a8d8a8">{{ c.cmd }}</code></td>
+          <td>{{ perm_badge(c.permission_level) }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger"
+              onclick='deleteEntry("commands", {{ {"cmd": c.cmd} | tojson }})'>
+              <i class="bi bi-trash3"></i>
+            </button>
+          </td>
+        </tr>
+        {%- else %}
+        <tr><td colspan="3" class="empty-state">No command overrides defined.</td></tr>
+        {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── API TOKENS ─────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-tokens">
+      <div class="section-header">
+        <h6>API tokens for external tools (CSMM, etc.). Treat secrets like passwords.</h6>
+        <button class="btn btn-sm btn-danger" onclick="openModal('apitokens')">
+          <i class="bi bi-plus-lg me-1"></i>Add Token
+        </button>
+      </div>
+      <table class="table table-hover" id="tbl-tokens">
+        <thead><tr><th>Name</th><th>Secret</th><th>Permission Level</th><th></th></tr></thead>
+        <tbody>
+        {%- for t in data.apitokens %}
+        <tr>
+          <td><strong>{{ t.name }}</strong></td>
+          <td><code style="color:#f1c40f;letter-spacing:.05em">{{ t.secret }}</code></td>
+          <td>{{ perm_badge(t.permission_level) }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger"
+              onclick='deleteEntry("apitokens", {{ {"name": t.name} | tojson }})'>
+              <i class="bi bi-trash3"></i>
+            </button>
+          </td>
+        </tr>
+        {%- else %}
+        <tr><td colspan="4" class="empty-state">No API tokens defined.</td></tr>
+        {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div><!-- /tab-content -->
+</div><!-- /content-area -->
+
+
+<!-- ── ADD MODAL ─────────────────────────────────────────────────────────── -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">Add Entry</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger" id="modalSaveBtn" onclick="submitModal()">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let activeSection = null;
+const modal = new bootstrap.Modal(document.getElementById('addModal'));
+
+// ── Modal forms ───────────────────────────────────────────────────────────────
+const FORMS = {
+  users: {
+    title: 'Add User / Admin',
+    fields: [
+      {id:'platform', label:'Platform', type:'select',
+       options:['EOS','Steam','XBL','PSN'], required:true},
+      {id:'userid',   label:'User ID',  type:'text',  required:true,
+       help:'EOS ID, SteamID64, etc.'},
+      {id:'name',     label:'Display Name', type:'text', required:false,
+       help:'Optional — for your reference only'},
+      {id:'permission_level', label:'Permission Level', type:'number',
+       value:'1000', required:true,
+       help:'0 = full admin, 1000 = default player'},
+    ],
+  },
+  whitelist: {
+    title: 'Add to Whitelist',
+    fields: [
+      {id:'platform', label:'Platform', type:'select',
+       options:['EOS','Steam','XBL','PSN'], required:true},
+      {id:'userid', label:'User ID', type:'text', required:true},
+      {id:'name',   label:'Display Name', type:'text', required:false},
+    ],
+  },
+  blacklist: {
+    title: 'Ban Player',
+    fields: [
+      {id:'platform', label:'Platform', type:'select',
+       options:['EOS','Steam','XBL','PSN'], required:true},
+      {id:'userid', label:'User ID', type:'text', required:true},
+      {id:'name',   label:'Display Name', type:'text', required:false},
+      {id:'reason', label:'Reason', type:'text', required:false},
+      {id:'unbandate', label:'Unban Date', type:'text', required:false,
+       help:'Leave empty for permanent ban. Format: yyyy-mm-dd hh:mm:ss'},
+    ],
+  },
+  commands: {
+    title: 'Add Command Permission',
+    fields: [
+      {id:'cmd', label:'Command', type:'text', required:true,
+       help:'e.g. kick, say, ban'},
+      {id:'permission_level', label:'Permission Level', type:'number',
+       value:'1000', required:true,
+       help:'0 = admin only, 1000 = all players'},
+    ],
+  },
+  apitokens: {
+    title: 'Add API Token',
+    fields: [
+      {id:'name',   label:'Name',   type:'text', required:true,
+       help:'e.g. csmm'},
+      {id:'secret', label:'Secret', type:'text', required:true,
+       help:'A strong random string — treat like a password'},
+      {id:'permission_level', label:'Permission Level', type:'number',
+       value:'0', required:true,
+       help:'0 = full admin access'},
+    ],
+  },
+};
+
+function openModal(section) {
+  activeSection = section;
+  const form = FORMS[section];
+  document.getElementById('modalTitle').textContent = form.title;
+
+  let html = '';
+  for (const f of form.fields) {
+    html += `<div class="mb-3">
+      <label class="form-label">${f.label}${f.required ? ' <span class="text-danger">*</span>' : ''}</label>`;
+    if (f.type === 'select') {
+      html += `<select class="form-select" id="mf-${f.id}">`;
+      for (const o of f.options) html += `<option>${o}</option>`;
+      html += '</select>';
+    } else {
+      html += `<input type="${f.type}" class="form-control" id="mf-${f.id}"
+               value="${f.value ?? ''}" ${f.required ? 'required' : ''}>`;
+    }
+    if (f.help) html += `<div class="form-text">${f.help}</div>`;
+    html += '</div>';
+  }
+  document.getElementById('modalBody').innerHTML = html;
+  modal.show();
+  // Focus first input
+  setTimeout(() => document.querySelector('#modalBody input,#modalBody select')?.focus(), 200);
+}
+
+function submitModal() {
+  const form = FORMS[activeSection];
+  const entry = {};
+  for (const f of form.fields) {
+    const el = document.getElementById('mf-' + f.id);
+    if (f.required && !el.value.trim()) {
+      el.focus(); el.classList.add('is-invalid');
+      return;
+    }
+    el.classList.remove('is-invalid');
+    entry[f.id] = el.value.trim();
+  }
+
+  fetch('/api/admin/' + activeSection, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(entry),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        modal.hide();
+        showToast('Entry added.', 'success');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        showToast('Error: ' + data.error, 'danger');
+      }
+    })
+    .catch(err => showToast('Network error: ' + err.message, 'danger'));
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+function deleteEntry(section, criteria) {
+  if (!confirm('Remove this entry?')) return;
+  fetch('/api/admin/' + section, {
+    method: 'DELETE',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(criteria),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        showToast('Entry removed.', 'success');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        showToast('Error: ' + data.error, 'danger');
+      }
+    })
+    .catch(err => showToast('Network error: ' + err.message, 'danger'));
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const el = document.getElementById('mainToast');
+  el.className = `toast align-items-center text-bg-${type} border-0`;
+  document.getElementById('toastMsg').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 3000}).show();
+}
+
+// Allow Enter key in modal inputs to submit
+document.getElementById('addModal').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') submitModal();
+});
+</script>
+</body>
+</html>

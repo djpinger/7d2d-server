@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>7D2D Panel — Give Items</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/darkly/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    html, body { background-color: #1a1a2e; }
+    .app-navbar {
+      background-color: #111827;
+      border-bottom: 2px solid #c0392b;
+      padding: 0.5rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand-text { font-size: 1.15rem; font-weight: 700; color: #fff; letter-spacing: 0.03em; }
+    .navbar-brand-text span { color: #e63946; }
+    .navbar-meta { font-size: 0.8rem; color: #6c757d; margin-left: 0.75rem; }
+    .content-area { padding: 1.5rem 2rem; max-width: 700px; }
+    .form-control, .form-select {
+      background-color: #253347; border-color: #3a5068; color: #e9ecef;
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: #253347; border-color: #e63946; color: #e9ecef; box-shadow: none;
+    }
+    .form-label { font-size: 0.85rem; color: #cdd3db; }
+    .card { background: #1f2b3e; border: 1px solid #2d3f57; }
+    .item-result {
+      background: #253347; border: 1px solid #3a5068; border-radius: 6px;
+      max-height: 240px; overflow-y: auto; display: none; margin-top: 4px;
+    }
+    .item-result .item-row {
+      padding: 0.4rem 0.75rem; cursor: pointer;
+      color: #e9ecef; border-bottom: 1px solid #2d3f57;
+      display: flex; flex-direction: column;
+    }
+    .item-result .item-row:hover { background: #2d3f57; }
+    .item-label { font-size: 0.85rem; }
+    .item-id    { color: #4a6080; font-size: 0.74rem; font-family: monospace; }
+    .item-result .item-row:last-child { border-bottom: none; }
+    .selected-item { font-size: 0.82rem; color: #58b4ae; margin-top: 4px; min-height: 1.2em; }
+    .toast-container { z-index: 9999; }
+  </style>
+</head>
+<body>
+
+<div class="app-navbar">
+  <div class="d-flex align-items-center">
+    <span class="navbar-brand-text"><span>7D2D</span> Panel</span>
+    <span class="navbar-meta">{{ server_name }}</span>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/dashboard" class="btn btn-sm btn-outline-secondary"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+    <a href="/config"   class="btn btn-sm btn-outline-secondary"><i class="bi bi-sliders me-1"></i>Config</a>
+    <a href="/saves"    class="btn btn-sm btn-outline-secondary"><i class="bi bi-hdd me-1"></i>Saves</a>
+    <a href="/admin"    class="btn btn-sm btn-outline-secondary"><i class="bi bi-shield-lock me-1"></i>Admin</a>
+    <a href="/sandbox"  class="btn btn-sm btn-outline-secondary"><i class="bi bi-code-square me-1"></i>Sandbox</a>
+    <a href="/console"  class="btn btn-sm btn-outline-secondary"><i class="bi bi-terminal me-1"></i>Console</a>
+    <a href="/players"  class="btn btn-sm btn-outline-secondary"><i class="bi bi-people me-1"></i>Players</a>
+    <a href="/give"     class="btn btn-sm btn-danger"><i class="bi bi-box-seam me-1"></i>Give</a>
+    <a href="/teleport" class="btn btn-sm btn-outline-secondary"><i class="bi bi-geo-alt me-1"></i>Teleport</a>
+    <a href="/logout"   class="btn btn-sm btn-outline-danger ms-1"><i class="bi bi-box-arrow-right me-1"></i>Logout</a>
+  </div>
+</div>
+
+<div class="content-area">
+  <div class="toast-container position-fixed top-0 end-0 p-3">
+    <div id="mainToast" class="toast" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMsg"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <h5 class="mb-3" style="color:#e9ecef">
+    <i class="bi bi-box-seam me-2" style="color:#e63946"></i>Give Items
+  </h5>
+
+  <div class="card p-3">
+    <form id="giveForm">
+      <div class="mb-3">
+        <label class="form-label">Player</label>
+        <select id="playerSelect" class="form-select">
+          <option value="">Loading players…</option>
+        </select>
+      </div>
+
+      <div class="mb-3 position-relative">
+        <label class="form-label">Item</label>
+        <input type="text" id="itemSearch" class="form-control" placeholder="Search items (e.g. ammo762mmBullet)…" autocomplete="off">
+        <div class="item-result" id="itemResults"></div>
+        <div class="selected-item" id="selectedItemLabel"></div>
+        <input type="hidden" id="selectedItem">
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-6">
+          <label class="form-label">Quantity</label>
+          <input type="number" id="quantity" class="form-control" value="1" min="1" max="2000">
+        </div>
+        <div class="col-6">
+          <label class="form-label">Quality</label>
+          <select id="quality" class="form-select">
+            <option value="1">1 — Worn</option>
+            <option value="2">2 — Poor</option>
+            <option value="3">3 — Standard</option>
+            <option value="4">4 — Good</option>
+            <option value="5">5 — Superior</option>
+            <option value="6" selected>6 — Flawless</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-danger w-100" id="giveBtn">
+        <i class="bi bi-gift me-1"></i>Give Item
+      </button>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function toast(msg, ok=true) {
+  const el = document.getElementById('mainToast');
+  document.getElementById('toastMsg').textContent = msg;
+  el.className = `toast text-bg-${ok ? 'success' : 'danger'}`;
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
+}
+
+// Pre-select player from URL param
+const urlParams = new URLSearchParams(location.search);
+const preEntityId = urlParams.get('entityId');
+const preName     = urlParams.get('name');
+
+async function loadPlayers() {
+  const sel = document.getElementById('playerSelect');
+  try {
+    const r = await fetch('/api/players');
+    const json = await r.json();
+    const players = (json.data && json.data.players) || [];
+    sel.innerHTML = players.length
+      ? players.map(p => `<option value="${p.entityId}" data-name="${p.name||''}">${p.name || p.entityId}</option>`).join('')
+      : '<option value="">No players online</option>';
+    if (preEntityId) {
+      const opt = [...sel.options].find(o => o.value == preEntityId);
+      if (opt) sel.value = preEntityId;
+    }
+  } catch {
+    sel.innerHTML = '<option value="">Failed to load players</option>';
+  }
+}
+
+// Item catalogue — loaded once, filtered client-side
+let allItems = [];
+let itemsReady = false;
+
+async function loadItems() {
+  const input = document.getElementById('itemSearch');
+  input.placeholder = 'Loading item catalogue…';
+  try {
+    const r = await fetch('/api/items');
+    const json = await r.json();
+    // Exclude terrain/block items; keep only giveable items
+    allItems = (json.data || []).filter(i => !i.isBlock);
+    itemsReady = true;
+    input.placeholder = `Search ${allItems.length.toLocaleString()} items…`;
+  } catch {
+    input.placeholder = 'Failed to load items';
+  }
+}
+
+function rankItems(term) {
+  const low = term.toLowerCase();
+  const words = low.split(/\s+/);
+  const scored = [];
+  for (const item of allItems) {
+    const nameL    = (item.name || '').toLowerCase();
+    const labelL   = (item.localizedName || '').toLowerCase();
+    // Must match all words somewhere in name or label
+    if (!words.every(w => nameL.includes(w) || labelL.includes(w))) continue;
+    // Rank: exact label > label starts-with > name starts-with > contains
+    let score = 0;
+    if (labelL === low)           score = 4;
+    else if (labelL.startsWith(low)) score = 3;
+    else if (nameL.startsWith(low))  score = 2;
+    else                              score = 1;
+    scored.push({item, score});
+  }
+  scored.sort((a, b) => b.score - a.score || a.item.localizedName.localeCompare(b.item.localizedName));
+  return scored.map(s => s.item);
+}
+
+function showResults(items) {
+  const box = document.getElementById('itemResults');
+  if (!items.length) { box.style.display = 'none'; return; }
+  box.innerHTML = items.slice(0, 80).map(item => {
+    const label = item.localizedName || item.name;
+    const id    = item.name;
+    return `<div class="item-row" data-name="${id}">
+      <span class="item-label">${label}</span>
+      <small class="item-id">${id}</small>
+    </div>`;
+  }).join('');
+  box.style.display = 'block';
+  box.querySelectorAll('.item-row').forEach(row => {
+    row.addEventListener('click', () => selectItem(row.dataset.name,
+      row.querySelector('.item-label').textContent));
+  });
+}
+
+function selectItem(id, label) {
+  document.getElementById('selectedItem').value = id;
+  document.getElementById('itemSearch').value = label || id;
+  document.getElementById('selectedItemLabel').textContent = `ID: ${id}`;
+  document.getElementById('itemResults').style.display = 'none';
+}
+
+let searchTimer;
+document.getElementById('itemSearch').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  const term = e.target.value.trim();
+  document.getElementById('selectedItem').value = '';
+  document.getElementById('selectedItemLabel').textContent = '';
+  if (term.length < 2) { document.getElementById('itemResults').style.display = 'none'; return; }
+  if (!itemsReady) return;
+  searchTimer = setTimeout(() => showResults(rankItems(term)), 150);
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#itemSearch') && !e.target.closest('#itemResults')) {
+    document.getElementById('itemResults').style.display = 'none';
+  }
+});
+
+document.getElementById('giveForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const entityId = document.getElementById('playerSelect').value;
+  const itemName = document.getElementById('selectedItem').value || document.getElementById('itemSearch').value.trim();
+  const qty      = document.getElementById('quantity').value;
+  const quality  = document.getElementById('quality').value;
+  const playerName = document.getElementById('playerSelect').selectedOptions[0]?.dataset.name || entityId;
+
+  if (!entityId) { toast('Select a player', false); return; }
+  if (!itemName) { toast('Select an item', false); return; }
+
+  const btn = document.getElementById('giveBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/run-command', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({command: `give ${playerName} ${itemName} ${qty} ${quality}`}),
+    });
+    const json = await r.json();
+    if (json.error) toast(json.error, false);
+    else toast(`Gave ${qty}x ${itemName} to ${playerName}`);
+  } catch(err) {
+    toast(err.message, false);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+loadPlayers();
+loadItems();
+</script>
+</body>
+</html>
