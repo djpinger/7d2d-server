@@ -2,66 +2,75 @@
 
 ## Architecture
 
-Single Docker container. Flask panel (`app.py`) is the container's main process (PID 1 via `entrypoint.sh`). It manages the 7 Days to Die game server as a child subprocess via `subprocess.Popen`, enabling start/stop/restart/update from the browser without restarting the Docker container.
+Two Docker containers. The panel container manages the game container via the Docker SDK, so rebuilding the panel does not affect the running game server.
 
 ```
-Container (entrypoint starts as root, drops to PUID:PGID via gosu)
-├── Flask panel (port 8090)   ← always running as service user
-│   ├── spawns → 7DaysToDieServer.x86_64
-│   └── reads stdout → log buffer → SSE → browser
-└── SteamCMD (on demand)      ← install/update subprocess
+7dtd-panel (Dockerfile)              7dtd-game (Dockerfile.game)
+├── Flask panel (port 8090)          └── 7DaysToDieServer.x86_64
+│   ├── Docker SDK → start/stop            (managed by panel)
+│   ├── tails /logs/server.log
+│   └── SteamCMD (on demand)
 ```
+
+Both containers share four bind-mount volumes: `/serverfiles`, `/config`, `/gamedata`, `/logs`.
+
+The game container has `restart: "no"` — Docker never auto-restarts it. The panel controls its lifecycle. The panel has `restart: unless-stopped`.
 
 ## Directory Layout
 
 ```
 /srv/7d2d-server/
-├── Dockerfile
+├── Dockerfile               # Panel image (Flask + SteamCMD)
+├── Dockerfile.game          # Game image (Ubuntu + lib32gcc + ca-certs + gosu)
 ├── docker-compose.yml
 ├── scripts/
-│   └── entrypoint.sh          # creates user at PUID:PGID, chowns volumes, exec gosu → Flask
+│   ├── entrypoint.sh        # Panel: user/group setup, chmod docker.sock, exec gosu → Flask
+│   └── game-entrypoint.sh   # Game: user/group setup, symlinks, cd serverfiles, exec game binary
 ├── panel/
-│   ├── app.py                 # All backend logic
-│   ├── requirements.txt       # Flask + requests
+│   ├── app.py               # All backend logic
+│   ├── requirements.txt     # Flask + requests + docker
 │   └── templates/
 │       ├── _api_warning.html  # Shared banner partial — included by all pages
 │       ├── dashboard.html     # Server controls + stats
 │       ├── login.html
-│       ├── config.html        # sdtdserver.xml editor
+│       ├── config.html        # sdtdserver.xml + platform.cfg editor
 │       ├── saves.html         # Save/world manager
 │       ├── admin.html         # serveradmin.xml manager
 │       ├── sandbox.html       # Visual SandboxCode editor
 │       ├── console.html       # Live log stream + command input
-│       ├── players.html       # Online players + actions
+│       ├── players.html       # Online players + actions + inventory viewer
 │       ├── give.html          # Give items
 │       └── teleport.html      # Waypoint browser + bot config
-└── data/                      # Runtime data (gitignored)
-    ├── serverfiles/           # Game installation (SteamCMD target)
-    ├── gamedata/              # Saves, worlds, serveradmin.xml
-    └── config/                # sdtdserver.xml, teleport_data.json
+└── data/                    # Runtime data (gitignored)
+    ├── serverfiles/         # Game installation (SteamCMD target) + platform.cfg
+    ├── gamedata/            # Saves, worlds, serveradmin.xml
+    ├── config/              # sdtdserver.xml, teleport_data.json
+    └── logs/                # Game server log files
 ```
 
 ## Volume Mounts (container paths)
 
 | Host | Container | Contents |
 |---|---|---|
-| `./data/serverfiles` | `/serverfiles` | Game binaries installed by SteamCMD |
+| `./data/serverfiles` | `/serverfiles` | Game binaries + platform.cfg |
 | `./data/gamedata` | `/gamedata` | Saves, GeneratedWorlds, serveradmin.xml |
 | `./data/config` | `/config` | sdtdserver.xml, teleport_data.json |
 | `./data/logs` | `/logs` | Game server log files |
 
 ## Key Environment Variables
 
+### Panel (`7dtd-panel`)
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `PUID` | `1000` | UID the service process runs as |
-| `PGID` | `1000` | GID the service process runs as |
+| `PUID` / `PGID` | `1000` | UID/GID the panel runs as |
 | `PANEL_PASSWORD` | `admin` | Web panel login password |
 | `SECRET_KEY` | random | Flask session signing key |
 | `GAME_BRANCH` | `public` | `public` or `latest_experimental` |
-| `GAME_API_URL` | `http://localhost:8080` | Game REST API base (same container) |
+| `GAME_API_URL` | `http://7dtd-game:8080` | Game REST API (Docker internal DNS) |
 | `GAME_API_TOKEN_NAME` | — | Token name from serveradmin.xml |
 | `GAME_API_SECRET` | — | Token secret from serveradmin.xml |
+| `GAME_CONTAINER_NAME` | `7dtd-game` | Docker container name to manage |
 | `CONFIG_PATH` | `/config/sdtdserver.xml` | Active server config |
 | `ADMIN_PATH` | `/gamedata/Saves/serveradmin.xml` | Admin XML |
 | `SAVES_ROOT` | `/gamedata/Saves` | Saves directory |
@@ -71,9 +80,19 @@ Container (entrypoint starts as root, drops to PUID:PGID via gosu)
 | `STEAMCMD_PATH` | `/opt/steamcmd/steamcmd.sh` | SteamCMD script |
 | `LOG_DIR` | `/logs` | Directory for game server log files |
 
+### Game (`7dtd-game`)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PUID` / `PGID` | `1000` | UID/GID the game process runs as |
+| `SERVERFILES_PATH` | `/serverfiles` | Game installation directory |
+| `CONFIG_PATH` | `/config/sdtdserver.xml` | Active server config |
+| `GAMEDATA_PATH` | `/gamedata` | Game data directory |
+| `LOG_DIR` | `/logs` | Log output directory |
+
 ## Privilege Drop (PUID/PGID)
 
-The container runs as root to start. `entrypoint.sh` creates a group/user matching `PGID`/`PUID` (skipped if they already exist), chowns `/serverfiles`, `/config`, `/gamedata`, `/opt/steamcmd`, and `/opt/panel`, then uses `exec gosu ${PUID}:${PGID}` to drop privileges before Flask starts. All file I/O after that point runs as the service user. `PUID`/`PGID` are runtime env vars — no rebuild needed to change them.
+Both containers run as root to start. Their respective entrypoint scripts create a group/user matching `PGID`/`PUID`, chown the volume dirs, then use `exec gosu ${PUID}:${PGID}` to drop privileges. The panel entrypoint also does `chmod 666 /var/run/docker.sock` so the service user can call the Docker API.
 
 ## Server Process Management (`app.py`)
 
@@ -82,31 +101,35 @@ The container runs as root to start. `entrypoint.sh` creates a group/user matchi
 Also: `installing` (SteamCMD running, blocks start/stop).
 
 ### Key globals
-- `_server_proc` — `subprocess.Popen` handle, `None` when stopped
+- `_docker_client` — `docker.DockerClient` from `/var/run/docker.sock`, `None` if socket unavailable
 - `_server_state` — current state string, guarded by `_server_lock`
 - `_log_buffer` — `deque(maxlen=500)` of log entry dicts
 - `_log_subs` — list of `queue.Queue` objects, one per SSE client
 
 ### Server startup
 ```python
-server_start()  # launches 7DaysToDieServer.x86_64
-                # starts _proc_reader thread
-                # state: stopped → starting
+server_start()
+  → _game_container().start()          # Docker SDK call
+  → threading.Thread(_log_tail_reader) # starts tailing /logs/server.log
+  → state: stopped → starting
 ```
-`_proc_reader` reads stdout line by line:
-- Pushes every line to `_log_buffer` + all SSE subscriber queues
-- On `"Started Webserver on port"` → transitions state to `running`
-- On chat lines → calls `_handle_chat()` in a new thread
-- On process exit → sets state back to `stopped`
 
-### Log file tee
+### Log tail (`_log_tail_reader`)
+Waits up to 60s for `server.log` to appear, then:
+1. Seeks back ~50 KB from end and pre-populates `_log_buffer` with recent history
+2. Tails new lines, pushing each to the buffer and all SSE subscriber queues
+3. Drives state transitions (`starting → running` on `"Started Webserver on port"`)
+4. Drives the chat teleport bot
+5. Polls Docker every 3s of idle to detect if the game container exited
 
-Every line of game server stdout is written to `LOG_DIR/server.log` (line-buffered, raw format with timestamp prefix) in addition to being pushed to the SSE buffer. On each `server_start()` call, `_rotate_server_log()` runs first: if `server.log` exists and is non-empty, it is renamed to `server-YYYY-MM-DD-HHMMSS.log` (using the file's mtime) and a fresh `server.log` is opened. The file handle is stored in `_log_file` (global, guarded by `_log_file_lock`) and closed by `_close_server_log()` in the `_proc_reader` finally block.
+### Log rotation
+`_rotate_server_log()` runs on each `server_start()`: renames `server.log` to `server-YYYY-MM-DD-HHMMSS.log` (using file mtime) if it exists and is non-empty.
 
-From the host: `tail -f ./data/logs/server.log`
+### Startup sync
+On panel startup, `_sync_container_state()` checks whether `7dtd-game` is already running (e.g. panel was rebuilt while game was live) and if so sets `_server_state = "running"` and starts `_log_tail_reader` immediately.
 
 ### SIGTERM handler
-Registered for both SIGTERM and SIGINT. Terminates the game server subprocess (with 60s timeout before SIGKILL), then calls `os._exit(0)`. This allows `docker compose down` to complete in well under the 75s `stop_grace_period`.
+Calls `os._exit(0)` — the game container runs independently and is not stopped when the panel container stops.
 
 ### Branch detection
 `_installed_branch()` reads `steamapps/appmanifest_294420.acf` and regex-searches for `"betakey"` using `re.IGNORECASE` — the manifest writes `"BetaKey"` with mixed case.
@@ -116,11 +139,11 @@ Raw game output: `2026-01-01T00:00:00 123.456 INF message text`
 Parsed by `_parse_raw()` into `{"msg": "...", "type": "Log|Warning|Error|Exception", "isotime": "..."}`.
 
 ### SSE log stream
-`GET /api/log-stream` — sends last 100 buffered entries on connect, then streams new entries as `event: logLine` with JSON data. The console template listens with `es.addEventListener('logLine', ...)`.
+`GET /api/log-stream` — sends buffered entries on connect (up to 500), then streams new entries as `event: logLine` with JSON data. The console template listens with `es.addEventListener('logLine', ...)`.
 
 ## Game API
 
-The game runs its REST API on `http://localhost:8080` (same container, no network hop). Requires `X-SDTD-API-TOKENNAME` + `X-SDTD-API-SECRET` headers.
+The game runs its REST API on port 8080. Inside the panel container it's reachable at `http://7dtd-game:8080` (Docker internal DNS). Requires `X-SDTD-API-TOKENNAME` + `X-SDTD-API-SECRET` headers.
 
 Key endpoints used by the panel:
 
@@ -134,6 +157,23 @@ Key endpoints used by the panel:
 
 **Player API note:** Array is at `data.players`, not `data` directly.
 **Item search:** API ignores searchterm — fetch all, filter client-side.
+
+## platform.cfg
+
+The game reads `serverfiles/platform.cfg` on startup to determine the platform stack:
+
+```
+platform=Steam
+crossplatform=EOS
+serverplatforms=Steam,XBL,PSN,LAN,
+```
+
+- `crossplatform=EOS` — requires outbound HTTPS to `api.epicgames.dev` on every startup, even for private servers. Setting it to empty disables EOS; the server runs Steam+LAN only with no internet requirement.
+- `crossplatform=` (empty) — XBL and PSN will error on init and be dropped from `serverplatforms` automatically (they require EOS). Steam and LAN continue normally.
+- The game container image must include `ca-certificates` for the EOS TLS handshake to succeed.
+- The game binary must run with `SERVERFILES_PATH` as its working directory (Unity looks for bundled native libs relative to CWD). `game-entrypoint.sh` does `cd "${SERVERFILES_PATH}"` before exec.
+
+Config → Platform in the panel reads/writes `platform.cfg` directly. `crossplatform` and `serverplatforms` are routed to `platform.cfg`; all other config keys go to `sdtdserver.xml`.
 
 ## Teleport Bot
 
@@ -152,43 +192,34 @@ Bot config (editable in Teleport page): `cooldown_seconds`, `daily_limit` (0 = u
 
 ## Config Editor
 
-Reads/writes `/config/sdtdserver.xml` in v3.0 `<property name="..." value="..."/>` format.
+Reads/writes `/config/sdtdserver.xml` (XML) and `/serverfiles/platform.cfg` (key=value). Both are surfaced in the same Config page across sidebar sections.
 
-Settings are organized via `_SECTIONS` (a list of dicts with `id`, `label`, `icon`, `fields`). Field rendering is driven by three companion dicts:
+`_PLATFORM_CFG_KEYS = {"crossplatform", "serverplatforms"}` — keys in this set are routed to `platform.cfg` by `api_config_save()`; all others go to `sdtdserver.xml`.
+
+Settings organized via `_SECTIONS` (list of dicts with `id`, `label`, `icon`, `fields`). Field rendering driven by:
 - `_FIELD_TYPES` — `text | number | boolean | select | sandbox_code`
-- `_FIELD_META` — per-field `label` and `options` list (for selects)
+- `_FIELD_META` — per-field `label`, `options`, `fix_when_false`, `fix_when_not`
 - `_FIELD_DESCRIPTIONS` — optional helper text shown below the input
 
-The config route builds `meta` as a shallow copy of `_FIELD_META` with `GameWorld.options` populated dynamically by `_available_worlds()`, which scans `SERVERFILES_PATH/Data/Worlds/` and falls back to a hardcoded list if the server isn't installed yet.
-
-`WorldGenSize` is a select with three options (6144 / 8192 / 10240) — the only officially supported RWG sizes.
-
-`SandboxCode` uses the `sandbox_code` field type, which renders a monospace textarea with a *Reload Saved* button (re-fetches from disk) and a description pointing to the Sandbox tab for full editing and reset.
-
-### WebDashboardEnabled warning
-`WebDashboardEnabled` has `"fix_when_false": True` in `_FIELD_META`. When the saved value is false/0/empty, the `render_field` macro applies `.field-warning` red styling to the field card and renders a Fix button that opens a confirmation modal. The modal POSTs `{"updates": {"WebDashboardEnabled": "true"}}` to `/api/config` and prompts the user to restart.
-
-A separate full-width banner (`_api_warning.html`) is included by every page (except login) directly below the navbar. It fetches `/api/server/status` on page load; if `api_enabled` is false it shows an amber strip with a **Fix Now** button (same POST as the modal) and a link to Config. The banner hides itself after a successful fix or when dismissed.
+`GameWorld.options` populated dynamically by `_available_worlds()` (scans `SERVERFILES_PATH/Data/Worlds/`).
 
 ### Config API
-- `GET /api/config` — returns current config values as a flat JSON dict
-- `POST /api/config` — accepts `{"updates": {"Key": "value", ...}}` and merges into the existing XML
+- `GET /api/config` — returns merged flat JSON dict from both `sdtdserver.xml` and `platform.cfg`
+- `POST /api/config` — accepts `{"updates": {"Key": "value", ...}}`, routes to the correct file
 
 ## Sandbox Editor
 
-Full visual editor for v3.0 SandboxCode. 150+ options across 8 categories (Player, Entities, World, Resources, Crafting, Tasks, Traders, Misc), organized into groups. Each option stores a value index into a `vals[]` array; `def` is the default index.
+Full visual editor for v3.0 SandboxCode. 150+ options across 8 categories (Player, Entities, World, Resources, Crafting, Tasks, Traders, Misc).
 
 ### Encode/decode
 - `encode()` — builds code string from non-default state entries: `A` prefix + 3-char triplets `[enumId_hi][enumId_lo][valueIdx]` (all base-26, A=0)
 - `decode(code)` — parses triplets back into state indices
 
-On page load: if URL hash is a valid code, load it (shared/bookmarked state takes priority). Otherwise, auto-fetch `GET /api/config` and decode the saved `SandboxCode` so the editor always opens with your current settings.
-
 ## Admin Manager
 
 Full CRUD for `serveradmin.xml` with five sections: `users`, `whitelist`, `blacklist`, `commands`, `apitokens`.
 
-The `/admin` route must pass **both** `data=parse_admin()` and `tele_data=_load_tele()` to the template — the template uses `data` for the five admin tabs and `tele_data` for the teleport section.
+The `/admin` route must pass **both** `data=parse_admin()` and `tele_data=_load_tele()` to the template.
 
 Routes:
 - `GET /api/admin` — returns all sections as JSON
@@ -199,13 +230,17 @@ Permission levels: `0` = full admin, `1000` = default player.
 
 ## Deploying Changes
 
-Panel code is baked into the image. To deploy:
+Rebuild only the panel — **game server stays running**:
+
+```bash
+git pull && docker compose up -d --build 7dtd-panel
+```
+
+To rebuild both (game server will stop and must be restarted from Dashboard):
 
 ```bash
 git pull && docker compose up -d --build
 ```
-
-The game server process is killed when the container restarts. Start it again from the Dashboard after the rebuild.
 
 ## v3.0 API Notes
 

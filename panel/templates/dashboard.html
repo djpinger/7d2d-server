@@ -93,6 +93,18 @@
           </button>
         </div>
         <div class="form-text mt-1">Stops server first if running. Streams output to console.</div>
+        <hr style="border-color:#2d3f57">
+        <div class="section-title mt-2"><i class="bi bi-puzzle me-1"></i>Alloc's Server Fixes</div>
+        <div class="d-flex gap-2 align-items-center flex-wrap mb-1">
+          <span id="allocsBadge" class="badge bg-secondary" style="font-size:0.75rem">—</span>
+          <button class="btn btn-outline-info btn-sm" id="btnAllocsInstall" onclick="allocsInstall()" disabled>
+            <i class="bi bi-cloud-download me-1"></i>Install / Update
+          </button>
+          <button class="btn btn-outline-danger btn-sm" id="btnAllocsUninstall" onclick="allocsUninstall()" disabled>
+            <i class="bi bi-trash me-1"></i>Uninstall
+          </button>
+        </div>
+        <div class="form-text">Requires server to be stopped. Restart after changes.</div>
       </div>
     </div>
 
@@ -103,8 +115,8 @@
         <div class="row g-2" id="statsRow">
           <div class="col-3"><div class="stat-card"><div class="stat-value" id="statPlayers">—</div><div class="stat-label">Players</div></div></div>
           <div class="col-3"><div class="stat-card"><div class="stat-value" id="statDay">—</div><div class="stat-label">Game Day</div></div></div>
-          <div class="col-3"><div class="stat-card"><div class="stat-value" id="statFps">—</div><div class="stat-label">FPS</div></div></div>
-          <div class="col-3"><div class="stat-card"><div class="stat-value" id="statHeap">—</div><div class="stat-label">Heap MB</div></div></div>
+          <div class="col-3"><div class="stat-card"><div class="stat-value" id="statHostiles">—</div><div class="stat-label">Hostiles</div></div></div>
+          <div class="col-3"><div class="stat-card"><div class="stat-value" id="statAnimals">—</div><div class="stat-label">Animals</div></div></div>
         </div>
         <div id="notInstalled" class="text-center" style="display:none;padding:2rem 0">
           <i class="bi bi-exclamation-triangle text-warning d-block fs-3 mb-2"></i>
@@ -168,8 +180,8 @@ function updateUI(s) {
 
   document.getElementById('statPlayers').textContent = s.players ?? '—';
   document.getElementById('statDay').textContent     = s.day     ?? '—';
-  document.getElementById('statFps').textContent     = s.fps     ?? '—';
-  document.getElementById('statHeap').textContent    = s.heap_mb ?? '—';
+  document.getElementById('statHostiles').textContent = s.hostiles ?? '—';
+  document.getElementById('statAnimals').textContent  = s.animals  ?? '—';
 
   document.getElementById('notInstalled').style.display = s.installed ? 'none' : 'block';
   document.getElementById('statsRow').style.display    = s.installed ? ''     : 'none';
@@ -184,6 +196,49 @@ function updateUI(s) {
 
   if (busy) badge.classList.add('pulse');
   else      badge.classList.remove('pulse');
+
+  updateAllocsUI(s.state);
+}
+
+function updateAllocsUI(state) {
+  const stopped = state === 'stopped';
+  fetch('/api/mods/allocs')
+    .then(r => r.json())
+    .then(a => {
+      const badge = document.getElementById('allocsBadge');
+      if (a.installed) {
+        badge.textContent = 'Installed';
+        badge.className = 'badge bg-success';
+      } else {
+        badge.textContent = 'Missing';
+        badge.className = 'badge bg-secondary';
+      }
+      document.getElementById('btnAllocsInstall').disabled   = !stopped;
+      document.getElementById('btnAllocsUninstall').disabled = !stopped || !a.installed;
+    })
+    .catch(() => {});
+}
+
+async function allocsInstall() {
+  if (!confirm('Download and install Alloc\'s Server Fixes? The server must be stopped.')) return;
+  document.getElementById('btnAllocsInstall').disabled = true;
+  try {
+    const r = await fetch('/api/mods/allocs/install', {method: 'POST'});
+    const j = await r.json();
+    if (j.error) toast(j.error, false);
+    else { toast('Alloc\'s Server Fixes installed — start server to activate.'); updateAllocsUI('stopped'); }
+  } catch(e) { toast(e.message, false); }
+}
+
+async function allocsUninstall() {
+  if (!confirm('Remove Alloc\'s Server Fixes? The server must be stopped.')) return;
+  document.getElementById('btnAllocsUninstall').disabled = true;
+  try {
+    const r = await fetch('/api/mods/allocs/uninstall', {method: 'POST'});
+    const j = await r.json();
+    if (j.error) toast(j.error, false);
+    else { toast('Alloc\'s Server Fixes removed.'); updateAllocsUI('stopped'); }
+  } catch(e) { toast(e.message, false); }
 }
 
 async function serverAction(action) {

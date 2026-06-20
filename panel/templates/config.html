@@ -181,7 +181,10 @@
 
 {%- macro render_field(name, value, meta, desc, ftype) %}
 {%- set label = meta.get('label', name) %}
-{%- set is_warn = meta.get('fix_when_false') and value.lower() in ('false', '0', '') %}
+{%- set is_warn = (meta.get('fix_when_false') and value.lower() in ('false', '0', '')) or
+                  (meta.get('fix_when_not') and value != meta.get('fix_when_not')) %}
+{%- set fix_value  = 'true' if meta.get('fix_when_false') else meta.get('fix_when_not', '') %}
+{%- set fix_notice = meta.get('fix_notice', '') %}
 <div class="field-card{% if ftype in ('textarea', 'sandbox_code') %} full-width{% endif %}{% if is_warn %} field-warning{% endif %}" data-field="{{ name }}">
   {%- if ftype == 'boolean' %}
   <label for="field-{{ name }}">{{ label }}</label>
@@ -248,9 +251,9 @@
 
   {%- if is_warn %}
   <div class="fix-notice mt-2">
-    <i class="bi bi-exclamation-triangle-fill me-1"></i>This must be enabled for the panel to work.
+    <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ fix_notice or 'This setting needs attention.' }}
     <button type="button" class="btn btn-danger btn-sm ms-2"
-            onclick="openFixModal('{{ name }}', '{{ label }}')">
+            onclick="openFixModal('{{ name }}', '{{ label }}', '{{ fix_value }}', '{{ fix_notice | e }}')">
       <i class="bi bi-wrench me-1"></i>Fix
     </button>
   </div>
@@ -399,13 +402,13 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:#1f2b3e;border:1px solid #2d3f57">
       <div class="modal-header" style="border-color:#2d3f57">
-        <h5 class="modal-title text-warning"><i class="bi bi-wrench me-2"></i>Enable <span id="fixModalLabel"></span>?</h5>
+        <h5 class="modal-title text-warning"><i class="bi bi-wrench me-2"></i>Fix <span id="fixModalLabel"></span>?</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" style="color:#cdd3db" id="fixModalBody"></div>
       <div class="modal-footer" style="border-color:#2d3f57">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No, leave it</button>
-        <button type="button" class="btn btn-danger" id="fixModalConfirm">Yes, enable it</button>
+        <button type="button" class="btn btn-danger" id="fixModalConfirm">Yes, fix it</button>
       </div>
     </div>
   </div>
@@ -527,32 +530,36 @@ function saveConfig() {
 
 // ── Fix modal ─────────────────────────────────────────────────────────────────
 let _fixField = null;
+let _fixValue = null;
 
-function openFixModal(fieldName, fieldLabel) {
+function openFixModal(fieldName, fieldLabel, fixValue, fixNotice) {
   _fixField = fieldName;
+  _fixValue = fixValue;
   document.getElementById('fixModalLabel').textContent = fieldLabel;
   document.getElementById('fixModalBody').innerHTML =
-    `Enabling <strong>${fieldLabel}</strong> is required for the panel to communicate with the game server.<br><br>` +
-    `This will save the change to your config immediately. You will still need to <strong>restart the server</strong> for it to take effect.`;
+    (fixNotice ? `<p>${fixNotice}</p>` : '') +
+    `<p>This will save the change to your config immediately. You will still need to <strong>restart the server</strong> for it to take effect.</p>` +
+    (fixValue && fixValue !== 'true' ? `<p class="mb-0 text-muted" style="font-size:0.85rem">Will be set to: <code>${fixValue}</code></p>` : '');
   bootstrap.Modal.getOrCreateInstance(document.getElementById('fixModal')).show();
 }
 
 document.getElementById('fixModalConfirm').addEventListener('click', () => {
-  if (!_fixField) return;
+  if (!_fixField || !_fixValue) return;
   const field = document.getElementById('field-' + _fixField);
   if (field) {
-    field.checked = true;
+    if (field.type === 'checkbox') { field.checked = true; }
+    else { field.value = _fixValue; }
     field.dispatchEvent(new Event('change', {bubbles: true}));
   }
   fetch('/api/config', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({updates: {[_fixField]: 'true'}}),
+    body: JSON.stringify({updates: {[_fixField]: _fixValue}}),
   })
     .then(r => r.json())
     .then(d => {
       bootstrap.Modal.getOrCreateInstance(document.getElementById('fixModal')).hide();
-      if (d.ok) showToast(`${_fixField} enabled — restart the server to apply.`, 'success');
+      if (d.ok) showToast(`${_fixField} updated — restart the server to apply.`, 'success');
       else showToast('Error: ' + d.error, 'danger');
     })
     .catch(e => showToast('Network error: ' + e.message, 'danger'));

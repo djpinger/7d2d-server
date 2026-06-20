@@ -29,6 +29,40 @@
     .toast-container { z-index: 9999; }
     .empty-state { color: #4a6080; font-size: 0.9rem; text-align: center; padding: 3rem 0; }
     .coord-cell { font-family: monospace; font-size: 0.82rem; color: #adb5bd; }
+    .btn-xs { padding: 0.15rem 0.45rem; font-size: 0.78rem; }
+
+    /* ── Inventory panel ── */
+    .inv-row td { padding: 0 !important; border-top: none !important; background: #131c2e; }
+    .inv-panel { padding: 0.75rem 1.25rem 1rem; }
+    .inv-section-label {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: #6c757d; margin-bottom: 0.4rem; margin-top: 0.6rem;
+    }
+    .inv-grid { display: flex; flex-wrap: wrap; gap: 3px; }
+    .inv-equip-grid { display: grid; grid-template-columns: repeat(2, 44px); gap: 3px; }
+    .inv-slot {
+      width: 44px; height: 44px;
+      background: #1e2d42; border: 2px solid #2d3f57;
+      border-radius: 4px; position: relative; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      cursor: default;
+    }
+    .inv-slot img { width: 36px; height: 36px; object-fit: contain; image-rendering: pixelated; }
+    .inv-slot.inv-empty { opacity: 0.35; }
+    .inv-slot .inv-count {
+      position: absolute; bottom: 1px; right: 3px;
+      font-size: 0.65rem; font-weight: 700; color: #fff;
+      text-shadow: 0 0 3px #000, 0 0 3px #000;
+      line-height: 1;
+    }
+    .inv-slot .inv-quality {
+      position: absolute; top: 1px; left: 2px;
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .inv-loading { color: #6c757d; font-size: 0.82rem; padding: 0.75rem 0; }
+    .inv-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
+    .inv-player-name { font-size: 0.85rem; font-weight: 600; color: #e9ecef; }
+    .inv-refresh { font-size: 0.75rem; }
   </style>
 </head>
 <body>
@@ -157,14 +191,121 @@ async function runCommand(cmd) {
   return r.json();
 }
 
+// ── Inventory rendering ──────────────────────────────────────────────────────
+
+function itemSlot(item, title) {
+  if (!item) return `<div class="inv-slot inv-empty" title="${title || 'Empty'}"></div>`;
+  const iconUrl = `/api/itemicon/${item.icon}/${item.iconcolor || 'FFFFFF'}`;
+  const qDot = item.quality > 0
+    ? `<span class="inv-quality" style="background:#${item.qualitycolor || 'aaa'}"></span>`
+    : '';
+  const count = item.count > 1 ? `<span class="inv-count">${item.count}</span>` : '';
+  const label = title || item.name;
+  return `<div class="inv-slot" title="${label}" style="${item.quality > 0 ? `border-color:#${item.qualitycolor}` : ''}">
+    ${qDot}
+    <img src="${iconUrl}" alt="${item.name}" loading="lazy" onerror="this.style.display='none'">
+    ${count}
+  </div>`;
+}
+
+function renderInventory(data, steamId) {
+  const eq = data.equipment || {};
+  const equipSlots = [
+    { key: 'head',   label: 'Head'   },
+    { key: 'gloves', label: 'Gloves' },
+    { key: 'armor',  label: 'Armor'  },
+    { key: 'boots',  label: 'Boots'  },
+  ];
+  const equipHtml = `<div class="inv-equip-grid">
+    ${equipSlots.map(s => itemSlot(eq[s.key] || null, s.label)).join('')}
+  </div>`;
+
+  const belt = data.belt || [];
+  const beltHtml = `<div class="inv-grid">
+    ${belt.map((it, i) => itemSlot(it, `Belt ${i}`)).join('')}
+  </div>`;
+
+  const bag = data.bag || [];
+  const rows = [];
+  for (let r = 0; r < Math.ceil(bag.length / 9); r++) {
+    const slice = bag.slice(r * 9, r * 9 + 9);
+    rows.push(`<div class="inv-grid">${slice.map((it, i) => itemSlot(it, `Bag ${r*9+i}`)).join('')}</div>`);
+  }
+
+  return `<div class="inv-panel">
+    <div class="inv-header">
+      <span class="inv-player-name"><i class="bi bi-backpack me-1"></i>${data.playername}</span>
+      <button class="btn btn-xs btn-outline-secondary inv-refresh" onclick="loadInventory('${steamId}')">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+      </button>
+    </div>
+    <div class="d-flex gap-4 flex-wrap">
+      <div>
+        <div class="inv-section-label">Equipped</div>
+        ${equipHtml}
+      </div>
+      <div>
+        <div class="inv-section-label">Belt</div>
+        ${beltHtml}
+      </div>
+    </div>
+    <div class="inv-section-label mt-2">Bag</div>
+    ${rows.join('')}
+  </div>`;
+}
+
+function getInvRow(steamId) {
+  return document.getElementById(`inv-${steamId.replace(/[^a-z0-9]/gi, '_')}`);
+}
+
+async function loadInventory(steamId) {
+  const row = getInvRow(steamId);
+  if (!row) return;
+  const td = row.querySelector('td');
+  td.innerHTML = '<div class="inv-loading ps-3"><i class="bi bi-hourglass-split me-1"></i>Loading inventory…</div>';
+  try {
+    const r = await fetch(`/api/inventory/${encodeURIComponent(steamId)}`);
+    const data = await r.json();
+    if (data.error) {
+      td.innerHTML = `<div class="inv-loading text-danger ps-3"><i class="bi bi-exclamation-triangle me-1"></i>${data.error}</div>`;
+    } else {
+      td.innerHTML = renderInventory(data, steamId);
+    }
+  } catch(e) {
+    td.innerHTML = `<div class="inv-loading text-danger ps-3"><i class="bi bi-exclamation-triangle me-1"></i>Failed to load inventory</div>`;
+  }
+}
+
+function toggleInventory(steamId) {
+  const row = getInvRow(steamId);
+  if (!row) return;
+  const isHidden = row.style.display === 'none' || !row.style.display;
+  if (isHidden) {
+    row.style.display = '';
+    const td = row.querySelector('td');
+    if (!td.dataset.loaded) {
+      td.dataset.loaded = '1';
+      loadInventory(steamId);
+    }
+  } else {
+    row.style.display = 'none';
+  }
+}
+
+// ── Player table ─────────────────────────────────────────────────────────────
+
 function buildTable(players) {
   if (!players.length) return '<div class="empty-state"><i class="bi bi-person-x d-block fs-2 mb-2"></i>No players online</div>';
-  let rows = players.map(p => {
-    const uid = p.platformId || {};
-    const sid = uid.combinedString || '';
-    const pos = p.position || {};
+
+  const rows = players.map(p => {
+    const uid   = p.platformId || {};
+    const sid   = uid.combinedString || '';
+    const safeId = sid.replace(/[^a-z0-9]/gi, '_');
+    const pos   = p.position || {};
     const kills = p.kills || {};
     const posStr = [pos.x, pos.y, pos.z].map(v => v != null ? Math.round(v) : '—').join(', ');
+    const nameSafe = (p.name || '').replace(/'/g, "\\'");
+
     return `<tr>
       <td><strong>${p.name || '—'}</strong><br><small class="text-muted">${sid}</small></td>
       <td class="coord-cell">${posStr}</td>
@@ -176,25 +317,32 @@ function buildTable(players) {
       <td>${p.ping ?? '—'}</td>
       <td>
         <div class="d-flex gap-1">
-          <button class="btn btn-xs btn-outline-secondary" title="PM" onclick="openPm(${p.entityId}, '${(p.name||'').replace(/'/g,"\\'")}')">
+          <button class="btn btn-xs btn-outline-secondary" title="Inventory" onclick="toggleInventory('${sid}')">
+            <i class="bi bi-backpack"></i>
+          </button>
+          <button class="btn btn-xs btn-outline-secondary" title="PM" onclick="openPm(${p.entityId}, '${nameSafe}')">
             <i class="bi bi-chat-dots"></i>
           </button>
           <a href="/give?entityId=${p.entityId}&name=${encodeURIComponent(p.name||'')}" class="btn btn-xs btn-outline-secondary" title="Give item">
             <i class="bi bi-box-seam"></i>
           </a>
-          <button class="btn btn-xs btn-outline-warning" title="Kick" onclick="kickPlayer(${p.entityId}, '${(p.name||'').replace(/'/g,"\\'")}')">
+          <button class="btn btn-xs btn-outline-warning" title="Kick" onclick="kickPlayer(${p.entityId}, '${nameSafe}')">
             <i class="bi bi-door-open"></i>
           </button>
-          <button class="btn btn-xs btn-outline-danger" title="Ban" onclick="openBan(${p.entityId}, '${(p.name||'').replace(/'/g,"\\'")}')">
+          <button class="btn btn-xs btn-outline-danger" title="Ban" onclick="openBan(${p.entityId}, '${nameSafe}')">
             <i class="bi bi-slash-circle"></i>
           </button>
-          <button class="btn btn-xs btn-outline-info" title="Set permission" onclick="openPerm('${(p.platformId||{}).platformId||'Steam'}','${(p.platformId||{}).userId||''}','${(p.name||'').replace(/'/g,"\\'")}')">
+          <button class="btn btn-xs btn-outline-info" title="Set permission" onclick="openPerm('${(p.platformId||{}).platformId||'Steam'}','${(p.platformId||{}).userId||''}','${nameSafe}')">
             <i class="bi bi-shield"></i>
           </button>
         </div>
       </td>
+    </tr>
+    <tr class="inv-row" id="inv-${safeId}" style="display:none">
+      <td colspan="9"></td>
     </tr>`;
   }).join('');
+
   return `<table class="table table-sm">
     <thead><tr>
       <th>Player</th><th>Position</th><th>HP</th><th>Lvl</th><th>Zk</th><th>Deaths</th><th>Score</th><th>Ping</th><th>Actions</th>
@@ -275,7 +423,6 @@ document.getElementById('permSaveBtn').addEventListener('click', async () => {
   const level    = parseInt(document.getElementById('permLevel').value);
   bootstrap.Modal.getOrCreateInstance(document.getElementById('permModal')).hide();
 
-  // Remove any existing entry first, then add with new level
   await fetch('/api/admin/users', {
     method: 'DELETE', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({userid: userId}),
@@ -305,11 +452,6 @@ document.getElementById('permRemoveBtn').addEventListener('click', async () => {
   if (json.error && json.error !== 'Entry not found') toast(json.error, false);
   else toast(`${name} removed from admin list`);
 });
-
-// Add .btn-xs styling
-const style = document.createElement('style');
-style.textContent = '.btn-xs { padding: 0.15rem 0.45rem; font-size: 0.78rem; }';
-document.head.appendChild(style);
 
 loadPlayers();
 setInterval(loadPlayers, 30000);

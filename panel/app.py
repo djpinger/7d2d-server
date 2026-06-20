@@ -1,3 +1,4 @@
+import io
 import os
 import re
 import json
@@ -6,6 +7,7 @@ import shutil
 import secrets
 import signal
 import subprocess
+import tarfile
 import threading
 import time
 import collections
@@ -26,14 +28,26 @@ CONFIG_PATH        = Path(os.environ.get("CONFIG_PATH",    "/config/sdtdserver.x
 ADMIN_PATH         = Path(os.environ.get("ADMIN_PATH",     "/gamedata/Saves/serveradmin.xml"))
 SAVES_ROOT         = Path(os.environ.get("SAVES_ROOT",     "/gamedata/Saves"))
 WORLDS_ROOT        = Path(os.environ.get("WORLDS_ROOT",    "/gamedata/GeneratedWorlds"))
+GAMEDATA_PATH      = Path(os.environ.get("GAMEDATA_PATH",  "/gamedata"))
+ALLOCS_URL         = "https://illy.bz/fi/7dtd/server_fixes.tar.gz"
+ALLOCS_MODS        = ["Allocs_CommonFunc", "Allocs_CommandExtensions", "Allocs_WebAndMapRendering"]
 TELEPORT_DATA_PATH = Path(os.environ.get("TELEPORT_DATA_PATH", "/config/teleport_data.json"))
 SERVERFILES_PATH   = Path(os.environ.get("SERVERFILES_PATH",   "/serverfiles"))
+PLATFORM_CFG_PATH  = SERVERFILES_PATH / "platform.cfg"
 STEAMCMD           = Path(os.environ.get("STEAMCMD_PATH",       "/opt/steamcmd/steamcmd.sh"))
 LOG_DIR            = Path(os.environ.get("LOG_DIR",             "/logs"))
-GAME_BRANCH        = os.environ.get("GAME_BRANCH",    "public")
-GAME_API_URL       = os.environ.get("GAME_API_URL",   "http://localhost:8080")
-GAME_API_TOKEN     = os.environ.get("GAME_API_TOKEN_NAME", "")
-GAME_API_SECRET    = os.environ.get("GAME_API_SECRET", "")
+GAME_BRANCH          = os.environ.get("GAME_BRANCH",         "public")
+GAME_API_URL         = os.environ.get("GAME_API_URL",        "http://7dtd-game:8080")
+GAME_API_TOKEN       = os.environ.get("GAME_API_TOKEN_NAME", "")
+GAME_API_SECRET      = os.environ.get("GAME_API_SECRET",     "")
+GAME_CONTAINER_NAME  = os.environ.get("GAME_CONTAINER_NAME", "7dtd-game")
+
+import docker as _docker_module
+try:
+    _docker_client = _docker_module.from_env()
+except Exception as _docker_err:
+    print(f"[panel] WARNING: Docker socket unavailable: {_docker_err}", flush=True)
+    _docker_client = None
 
 
 # ─── Log buffer + SSE ─────────────────────────────────────────────────────────
@@ -69,124 +83,138 @@ def _parse_raw(raw: str):
 
 # ─── Server log file ──────────────────────────────────────────────────────────
 
-_log_file      = None
-_log_file_lock = threading.Lock()
-
 def _rotate_server_log():
-    """Archive the previous server.log to a dated name, open a fresh one."""
-    global _log_file
+    """Archive previous server.log to a dated name; game container writes the new one."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     current = LOG_DIR / "server.log"
     if current.exists() and current.stat().st_size > 0:
         ts = datetime.fromtimestamp(current.stat().st_mtime).strftime("%Y-%m-%d-%H%M%S")
         current.rename(LOG_DIR / f"server-{ts}.log")
-    with _log_file_lock:
-        _log_file = current.open("w", buffering=1, encoding="utf-8")
-
-
-def _close_server_log():
-    global _log_file
-    with _log_file_lock:
-        if _log_file:
-            try:
-                _log_file.close()
-            except Exception:
-                pass
-            _log_file = None
 
 
 # ─── Server process management ────────────────────────────────────────────────
 
-_server_proc  = None
 _server_state = "stopped"   # stopped | starting | running | stopping | installing
 _server_lock  = threading.Lock()
 
 
-def _proc_reader(proc):
-    """Background thread: reads game server stdout, drives log + chat bot."""
+def _log_tail_reader():
+    """Background thread: tails server.log from the shared volume, drives log + chat bot."""
     global _server_state
+    log_path = LOG_DIR / "server.log"
+
+    # Wait for the game container to create the log file (up to 60 s)
+    deadline = time.monotonic() + 60
+    while not log_path.exists():
+        if _server_state not in ("starting", "running"):
+            return
+        if time.monotonic() > deadline:
+            _log_push("Timed out waiting for server.log to appear.", "Warning", "panel")
+            with _server_lock:
+                if _server_state not in ("stopping", "stopped", "installing"):
+                    _server_state = "stopped"
+            return
+        time.sleep(0.5)
+
     try:
-        for raw in iter(proc.stdout.readline, ""):
-            raw = raw.rstrip()
-            if not raw:
-                continue
-            with _log_file_lock:
-                if _log_file:
-                    _log_file.write(raw + "\n")
-            msg, typ = _parse_raw(raw)
-            _log_push(msg, typ)
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            # Pre-populate buffer with recent history (~50 KB back from end)
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 51200))
+            if size > 51200:
+                f.readline()  # skip the partial first line
+            for _raw in f.readlines():
+                _raw = _raw.rstrip()
+                if _raw:
+                    _msg, _typ = _parse_raw(_raw)
+                    _log_push(_msg, _typ)
+            # now tail from current position (end of pre-populated content)
+            _last_check = time.monotonic()
 
-            # Transition to "running" once the web API is up
-            if _server_state == "starting" and "Started Webserver on port" in msg:
-                with _server_lock:
-                    if _server_state == "starting":
-                        _server_state = "running"
+            while True:
+                line = f.readline()
+                if line:
+                    _last_check = time.monotonic()
+                    raw = line.rstrip()
+                    if not raw:
+                        continue
+                    msg, typ = _parse_raw(raw)
+                    _log_push(msg, typ)
 
-            # Fallback: if web dashboard is disabled the above line never fires;
-            # use StartGame done so the state doesn't get stuck at "starting"
-            if _server_state == "starting" and "StartGame done" in msg:
-                with _server_lock:
-                    if _server_state == "starting":
-                        _server_state = "running"
+                    if _server_state == "starting" and "Started Webserver on port" in msg:
+                        with _server_lock:
+                            if _server_state == "starting":
+                                _server_state = "running"
 
-            # Warn loudly when the API is disabled — panel features won't work
-            if "Webserver not started, WebDashboardEnabled set to false" in msg:
-                _log_push(
-                    "WARNING: WebDashboardEnabled is false — the panel cannot reach the game API. "
-                    "Go to Config → Network, enable Web Dashboard, set port to 8080, then restart.",
-                    "Error", "panel"
-                )
+                    if _server_state == "starting" and "StartGame done" in msg:
+                        with _server_lock:
+                            if _server_state == "starting":
+                                _server_state = "running"
 
-            # Chat bot
-            cm = _CHAT_RE.search(msg)
-            if cm:
-                steam_id   = cm.group(1)
-                entity_id  = int(cm.group(2))
-                player_name = cm.group(4)
-                chat_msg   = cm.group(5)
-                threading.Thread(
-                    target=_handle_chat,
-                    args=(steam_id, entity_id, player_name, chat_msg),
-                    daemon=True,
-                ).start()
+                    if "Webserver not started, WebDashboardEnabled set to false" in msg:
+                        _log_push(
+                            "WARNING: WebDashboardEnabled is false — the panel cannot reach the game API. "
+                            "Go to Config → Network, enable Web Dashboard, set port to 8080, then restart.",
+                            "Error", "panel"
+                        )
+
+                    cm = _CHAT_RE.search(msg)
+                    if cm:
+                        threading.Thread(
+                            target=_handle_chat,
+                            args=(cm.group(1), int(cm.group(2)), cm.group(4), cm.group(5)),
+                            daemon=True,
+                        ).start()
+                else:
+                    time.sleep(0.1)
+                    if _server_state == "stopping":
+                        break
+                    # Every 3 s verify the game container is still running
+                    if time.monotonic() - _last_check > 3.0:
+                        _last_check = time.monotonic()
+                        try:
+                            c = _docker_client.containers.get(GAME_CONTAINER_NAME)
+                            if c.status not in ("running", "restarting"):
+                                break
+                        except Exception:
+                            break
     except Exception:
         pass
     finally:
-        _close_server_log()
         with _server_lock:
             if _server_state not in ("stopping", "stopped", "installing"):
                 _server_state = "stopped"
         _log_push("Server process exited.", "Warning", "panel")
 
 
+def _game_container():
+    if _docker_client is None:
+        raise RuntimeError("Docker socket unavailable — is /var/run/docker.sock mounted?")
+    return _docker_client.containers.get(GAME_CONTAINER_NAME)
+
+
 def server_start():
-    global _server_proc, _server_state
+    global _server_state
     with _server_lock:
-        if _server_proc and _server_proc.poll() is None:
+        if _server_state in ("running", "starting"):
             return {"error": "Server already running"}
         if _server_state == "installing":
             return {"error": "Installation in progress"}
-        exe = SERVERFILES_PATH / "7DaysToDieServer.x86_64"
-        if not exe.exists():
+        if not (SERVERFILES_PATH / "7DaysToDieServer.x86_64").exists():
             return {"error": "Server not installed — use Install/Update first"}
         _rotate_server_log()
         _server_state = "starting"
 
     _log_push("Starting server…", source="panel")
     try:
-        proc = subprocess.Popen(
-            [str(exe),
-             "-logfile", "/dev/stdout",
-             "-quit", "-batchmode", "-nographics", "-dedicated",
-             f"-configfile={CONFIG_PATH}",
-             "-UserDataFolder", str(SERVERFILES_PATH.parent / "gamedata")],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1, cwd=str(SERVERFILES_PATH),
-        )
-        with _server_lock:
-            _server_proc = proc
-        threading.Thread(target=_proc_reader, args=(proc,), daemon=True).start()
+        _game_container().start()
+        threading.Thread(target=_log_tail_reader, daemon=True).start()
         return {"ok": True}
+    except _docker_module.errors.NotFound:
+        with _server_lock:
+            _server_state = "stopped"
+        return {"error": f"Game container '{GAME_CONTAINER_NAME}' not found — run: docker compose up -d"}
     except Exception as e:
         with _server_lock:
             _server_state = "stopped"
@@ -196,20 +224,18 @@ def server_start():
 def server_stop():
     global _server_state
     with _server_lock:
-        proc = _server_proc
-        if not proc or proc.poll() is not None:
+        if _server_state in ("stopped", "stopping"):
             _server_state = "stopped"
             return {"error": "Server not running"}
         _server_state = "stopping"
 
     _log_push("Stopping server…", source="panel")
-    proc.terminate()
     try:
-        proc.wait(timeout=60)
-    except subprocess.TimeoutExpired:
-        _log_push("Force-killing server (timeout)…", "Warning", "panel")
-        proc.kill()
-        proc.wait()
+        _game_container().stop(timeout=60)
+    except _docker_module.errors.NotFound:
+        pass
+    except Exception as e:
+        _log_push(f"Stop error: {e}", "Error", "panel")
 
     with _server_lock:
         _server_state = "stopped"
@@ -231,11 +257,10 @@ def server_install(branch=None):
     global _server_state
     branch = branch or GAME_BRANCH
     with _server_lock:
-        proc = _server_proc
-        if proc and proc.poll() is None:
+        if _server_state not in ("stopped",):
+            if _server_state == "installing":
+                return {"error": "Installation already in progress"}
             return {"error": "Stop the server before installing"}
-        if _server_state == "installing":
-            return {"error": "Installation already in progress"}
         _server_state = "installing"
 
     def _do():
@@ -529,6 +554,8 @@ _SECTIONS = [
                 "WebDashboardEnabled","WebDashboardPort",
                 "EACEnabled","BattlEye","HideCommandExecutionLog",
                 "MaxUncoveredMapChunks","TerminalWindowEnabled"]},
+    {"id": "platform",    "label": "Platform",    "icon": "bi-hdd-network",
+     "fields": ["crossplatform","serverplatforms"]},
     {"id": "gameplay",    "label": "Gameplay",    "icon": "bi-joystick",
      "fields": ["GameWorld","WorldGenSeed","WorldGenSize","GameName","GameMode",
                 "PlayerKillingMode","BuildCreate","DayNightLength","DayLightLength",
@@ -562,6 +589,7 @@ _FIELD_TYPES = {
     "PlayerSafeZoneHours": "number", "MaxSpawnedZombies": "number",
     "MaxSpawnedAnimals": "number", "ServerMaxAllowedViewDistance": "number",
     "MaxQueuedMeshLayers": "number", "ServerCpuCount": "number",
+    "crossplatform": "select", "serverplatforms": "text",
     "ServerVisibility": "select", "Region": "select", "GameMode": "select",
     "GameWorld": "select", "WorldGenSize": "select",
     "PlayerKillingMode": "select", "DeathPenalty": "select", "DropOnDeath": "select",
@@ -590,7 +618,8 @@ _FIELD_META = {
     "ServerReservedSlotsPermission": {"label": "Reserved Slots Permission"},
     "ServerAdminSlots":              {"label": "Admin Slots"},
     "ServerAdminSlotsPermission":    {"label": "Admin Slots Permission"},
-    "WebDashboardEnabled":           {"label": "Web Dashboard / API", "fix_when_false": True},
+    "WebDashboardEnabled":           {"label": "Web Dashboard / API", "fix_when_false": True,
+                                     "fix_notice": "Required for the panel to communicate with the game server (players, commands, stats)."},
     "WebDashboardPort":              {"label": "Web Dashboard Port"},
     "EACEnabled":                    {"label": "Easy Anti-Cheat"},
     "BattlEye":                      {"label": "BattlEye"},
@@ -620,7 +649,8 @@ _FIELD_META = {
     "PartySharedKillRange":          {"label": "Party Kill Share Range"},
     "PlayerSafeZoneLevel":           {"label": "Safe Zone Level"},
     "PlayerSafeZoneHours":           {"label": "Safe Zone Hours"},
-    "UserDataFolder":                {"label": "User Data Folder"},
+    "UserDataFolder":                {"label": "User Data Folder",
+                                     "fix_notice": "If not set to the volume path, save games and worlds are stored inside the container and permanently lost on rebuild or update."},
     "SaveGameFolder":                {"label": "Save Game Folder"},
     "EnemyDifficulty":               {"label": "Enemy Difficulty", "options": [{"value":"0","label":"Normal"},{"value":"1","label":"Feral"}]},
     "EnemySpawnMode":                {"label": "Enemy Spawning", "options": [{"value":"False","label":"Off"},{"value":"True","label":"On"}]},
@@ -634,6 +664,10 @@ _FIELD_META = {
     "RootDataFolder":                {"label": "Root Data Folder"},
     "ModsEnabled":                   {"label": "Mods Enabled"},
     "ModList":                       {"label": "Mod List"},
+    "crossplatform":                 {"label": "Cross-Platform Backend",
+                                     "options": [{"value": "EOS",  "label": "EOS (Epic Online Services)"},
+                                                 {"value": "",     "label": "Disabled (Steam only, no internet required)"}]},
+    "serverplatforms":               {"label": "Allowed Platforms"},
 }
 
 _FIELD_DESCRIPTIONS = {
@@ -649,7 +683,40 @@ _FIELD_DESCRIPTIONS = {
     "PlayerSafeZoneLevel":  "Player level below which the safe zone applies (0 = disabled)",
     "WorldGenSeed":         "Any text or number — determines the generated map layout",
     "XPMultiplier":         "100 = default, 200 = double XP",
+    "crossplatform":        "Set to 'Disabled' to remove the EOS internet requirement on startup. Steam-only — no console cross-play. Stored in platform.cfg, not sdtdserver.xml.",
+    "serverplatforms":      "Comma-separated list of allowed platforms (Steam, LAN, XBL, PSN, EOS). XBL/PSN require EOS enabled above. Stored in platform.cfg.",
 }
+
+
+# ─── platform.cfg helpers ─────────────────────────────────────────────────────
+
+_PLATFORM_CFG_KEYS = {"crossplatform", "serverplatforms"}
+
+def parse_platform_cfg() -> dict:
+    result = {}
+    if not PLATFORM_CFG_PATH.exists():
+        return result
+    with open(PLATFORM_CFG_PATH, "r") as f:
+        for line in f:
+            line = line.strip()
+            if "=" in line:
+                k, _, v = line.partition("=")
+                result[k.strip()] = v.strip()
+    return result
+
+def save_platform_cfg(updates: dict):
+    current = parse_platform_cfg()
+    current.update(updates)
+    lines = []
+    # preserve platform= first, then known keys in order
+    for key in ("platform", "crossplatform", "serverplatforms"):
+        if key in current:
+            lines.append(f"{key}={current[key]}\n")
+    for key, val in current.items():
+        if key not in ("platform", "crossplatform", "serverplatforms"):
+            lines.append(f"{key}={val}\n")
+    with open(PLATFORM_CFG_PATH, "w") as f:
+        f.writelines(lines)
 
 
 # ─── Config XML helpers ───────────────────────────────────────────────────────
@@ -797,35 +864,124 @@ def dashboard():
     return render_template("dashboard.html", installed=_server_installed())
 
 
+# ─── Allocs Server Fixes ──────────────────────────────────────────────────────
+
+def _allocs_status():
+    mods_dir  = SERVERFILES_PATH / "Mods"
+    installed = any(
+        (mods_dir / m).exists() or (mods_dir / (m + ".disabled")).exists()
+        for m in ALLOCS_MODS
+    )
+    return {"installed": installed}
+
+
+@app.route("/api/mods/allocs")
+@login_required
+def api_allocs_status():
+    return jsonify(_allocs_status())
+
+
+@app.route("/api/mods/allocs/install", methods=["POST"])
+@login_required
+def api_allocs_install():
+    with _server_lock:
+        if _server_state != "stopped":
+            return jsonify({"error": "Stop the server before installing mods"}), 400
+    try:
+        r = _req.get(ALLOCS_URL, timeout=60)
+        r.raise_for_status()
+        mods_dir = SERVERFILES_PATH / "Mods"
+        mods_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(r.content)) as tf:
+            for mod in ALLOCS_MODS:
+                for suffix in ("", ".disabled"):
+                    d = mods_dir / (mod + suffix)
+                    if d.exists():
+                        shutil.rmtree(str(d))
+            tf.extractall(SERVERFILES_PATH)
+        return jsonify({"ok": True, **_allocs_status()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/mods/allocs/uninstall", methods=["POST"])
+@login_required
+def api_allocs_uninstall():
+    with _server_lock:
+        if _server_state != "stopped":
+            return jsonify({"error": "Stop the server before removing mods"}), 400
+    mods_dir = SERVERFILES_PATH / "Mods"
+    for mod in ALLOCS_MODS:
+        for suffix in ("", ".disabled"):
+            d = mods_dir / (mod + suffix)
+            if d.exists():
+                shutil.rmtree(str(d))
+    return jsonify({"ok": True, **_allocs_status()})
+
+
+# ─── Inventory ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/inventory/<steam_id>")
+@login_required
+def api_inventory(steam_id):
+    data = game_api_get("/api/getplayerinventory", params={"userid": steam_id})
+    if "error" in data:
+        return jsonify(data), 502
+    return jsonify(data)
+
+
+@app.route("/api/itemicon/<name>/<tint>")
+@login_required
+def api_itemicon(name, tint):
+    import traceback as _tb
+    try:
+        r = _req.get(
+            f"{GAME_API_URL}/itemicons/{name}__{tint}.png",
+            headers=_game_headers(),
+            timeout=5,
+        )
+        if r.status_code == 200:
+            resp = Response(r.content, mimetype="image/png")
+            resp.headers["Cache-Control"] = "public, max-age=3600"
+            return resp
+        print(f"[itemicon] game server returned {r.status_code} for {name}__{tint}", flush=True)
+        return Response(status=r.status_code)
+    except Exception as e:
+        print(f"[itemicon] exception for {name}__{tint}: {e}", flush=True)
+        _tb.print_exc()
+        return Response(status=502)
+
+
+# ─── Server status ─────────────────────────────────────────────────────────────
+
 @app.route("/api/server/status")
 @login_required
 def api_server_status():
     with _server_lock:
-        proc  = _server_proc
         state = _server_state
-    pid = proc.pid if proc and proc.poll() is None else None
 
     cfg, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
-    api_enabled = cfg.get("WebDashboardEnabled", "false").lower() == "true"
+    api_enabled  = cfg.get("WebDashboardEnabled", "false").lower() == "true"
+    userdata_ok  = cfg.get("UserDataFolder", "") == str(GAMEDATA_PATH)
 
     stats = {}
     api_ok = False
     if state == "running":
-        gs = game_api_get("/api/gamestats")
         ss = game_api_get("/api/serverstats")
-        if "data" in gs:
+        if "data" in ss and isinstance(ss["data"], dict):
             api_ok = True
-            d = gs["data"]
-            stats["day"]     = d.get("gametime", {}).get("days")
-            stats["players"] = d.get("players")
-        if "data" in ss:
             d = ss["data"]
-            stats["fps"]     = round(d.get("fps", 0), 1)
-            stats["heap_mb"] = round(d.get("memUsed", 0) / 1024 / 1024, 0)
+            stats["day"]      = d.get("gameTime", {}).get("days")
+            stats["players"]  = d.get("players")
+            stats["hostiles"] = d.get("hostiles")
+            stats["animals"]  = d.get("animals")
 
     return jsonify({"state": state, "installed": _server_installed(),
-                    "branch": _installed_branch(), "pid": pid,
-                    "api_enabled": api_enabled, "api_ok": api_ok, **stats})
+                    "branch": _installed_branch(),
+                    "api_enabled": api_enabled, "api_ok": api_ok,
+                    "userdata_ok": userdata_ok,
+                    "expected_userdata_path": str(GAMEDATA_PATH),
+                    **stats})
 
 
 @app.route("/api/server/start", methods=["POST"])
@@ -930,7 +1086,12 @@ def _available_worlds():
 @login_required
 def config():
     values, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
-    meta = {**_FIELD_META, "GameWorld": {**_FIELD_META.get("GameWorld", {}), "options": _available_worlds()}}
+    values.update(parse_platform_cfg())
+    meta = {
+        **_FIELD_META,
+        "GameWorld":      {**_FIELD_META.get("GameWorld",      {}), "options": _available_worlds()},
+        "UserDataFolder": {**_FIELD_META.get("UserDataFolder", {}), "fix_when_not": str(GAMEDATA_PATH)},
+    }
     return render_template("config.html", values=values, sections=_SECTIONS,
                            field_meta=meta, field_types=_FIELD_TYPES,
                            descriptions=_FIELD_DESCRIPTIONS)
@@ -940,6 +1101,7 @@ def config():
 @login_required
 def api_config_get():
     values, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
+    values.update(parse_platform_cfg())
     return jsonify(values)
 
 
@@ -949,9 +1111,14 @@ def api_config_save():
     try:
         body = request.get_json() or {}
         new_values = body.get("updates", body)
-        existing, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
-        existing.update(new_values)
-        save_config(existing)
+        xml_updates      = {k: v for k, v in new_values.items() if k not in _PLATFORM_CFG_KEYS}
+        platform_updates = {k: v for k, v in new_values.items() if k in _PLATFORM_CFG_KEYS}
+        if xml_updates:
+            existing, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
+            existing.update(xml_updates)
+            save_config(existing)
+        if platform_updates and PLATFORM_CFG_PATH.exists():
+            save_platform_cfg(platform_updates)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1216,23 +1383,27 @@ def api_teleport_player():
 # ─── Startup ──────────────────────────────────────────────────────────────────
 
 def _shutdown_handler(signum, frame):
-    """Gracefully stop the game server when the container receives SIGTERM/SIGINT."""
-    _log_push("Shutting down — stopping game server…", source="panel")
-    with _server_lock:
-        proc  = _server_proc
-        state = _server_state
-    if proc and proc.poll() is None and state not in ("stopping", "stopped"):
-        proc.terminate()
-        try:
-            proc.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+    """Panel is shutting down — game container keeps running independently."""
+    _log_push("Panel shutting down…", source="panel")
     os._exit(0)
 
 signal.signal(signal.SIGTERM, _shutdown_handler)
 signal.signal(signal.SIGINT,  _shutdown_handler)
 
+
+def _sync_container_state():
+    """On panel startup, sync _server_state with the actual game container state."""
+    global _server_state
+    try:
+        c = _docker_client.containers.get(GAME_CONTAINER_NAME)
+        if c.status == "running":
+            with _server_lock:
+                _server_state = "running"
+            threading.Thread(target=_log_tail_reader, daemon=True).start()
+    except Exception:
+        pass
+
+threading.Thread(target=_sync_container_state, daemon=True).start()
 threading.Thread(target=_player_poller, daemon=True).start()
 
 if __name__ == "__main__":

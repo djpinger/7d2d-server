@@ -20,6 +20,28 @@
   <button type="button" class="btn-close btn-close-white ms-auto" style="font-size:0.65rem" onclick="apiWarnDismiss()" aria-label="Dismiss"></button>
 </div>
 
+<div id="userdataWarnBanner" style="
+  display:none;
+  background:#1a1a3b;
+  border-bottom:2px solid #6f42c1;
+  color:#cba6f7;
+  padding:0.45rem 1.25rem;
+  font-size:0.875rem;
+  align-items:center;
+  gap:0.75rem;
+">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  <strong>Save data folder not configured.</strong>
+  Save games and worlds are stored inside the container and will be lost on rebuild or update.
+  <button type="button" class="btn btn-sm py-0 px-2" style="font-size:0.8rem;background:#6f42c1;color:#fff" onclick="userdataWarnFix()">
+    <i class="bi bi-wrench me-1"></i>Fix Now
+  </button>
+  <a href="/config" class="btn btn-outline-light btn-sm py-0 px-2" style="font-size:0.8rem">
+    <i class="bi bi-sliders me-1"></i>Config
+  </a>
+  <button type="button" class="btn-close btn-close-white ms-auto" style="font-size:0.65rem" onclick="userdataWarnDismiss()" aria-label="Dismiss"></button>
+</div>
+
 <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:10000">
   <div id="apiWarnToast" class="toast" role="alert">
     <div class="d-flex">
@@ -31,7 +53,9 @@
 
 <script>
 (function () {
-  var _dismissed = false;
+  var _apiDismissed      = false;
+  var _userdataDismissed = false;
+  var _userdataPath      = null;
 
   function showApiWarnToast(msg, ok) {
     var el = document.getElementById('apiWarnToast');
@@ -40,6 +64,7 @@
     bootstrap.Toast.getOrCreateInstance(el, {delay: 5000}).show();
   }
 
+  /* ── API disabled fix ──────────────────────────────────────── */
   window.apiWarnFix = async function () {
     try {
       var r = await fetch('/api/config', {
@@ -54,26 +79,52 @@
       } else {
         showApiWarnToast('Failed: ' + (j.error || 'unknown error'), false);
       }
-    } catch (e) {
-      showApiWarnToast(e.message, false);
-    }
+    } catch (e) { showApiWarnToast(e.message, false); }
   };
 
   window.apiWarnDismiss = function () {
-    _dismissed = true;
+    _apiDismissed = true;
     document.getElementById('apiWarnBanner').style.display = 'none';
   };
 
-  async function checkApiWarning() {
-    if (_dismissed) return;
+  /* ── UserDataFolder fix ────────────────────────────────────── */
+  window.userdataWarnFix = async function () {
+    if (!_userdataPath) return;
+    try {
+      var r = await fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({updates: {UserDataFolder: _userdataPath}}),
+      });
+      var j = await r.json();
+      if (j.ok) {
+        document.getElementById('userdataWarnBanner').style.display = 'none';
+        showApiWarnToast('User Data Folder set — restart the server to apply.', true);
+      } else {
+        showApiWarnToast('Failed: ' + (j.error || 'unknown error'), false);
+      }
+    } catch (e) { showApiWarnToast(e.message, false); }
+  };
+
+  window.userdataWarnDismiss = function () {
+    _userdataDismissed = true;
+    document.getElementById('userdataWarnBanner').style.display = 'none';
+  };
+
+  /* ── Poll status ───────────────────────────────────────────── */
+  async function checkWarnings() {
     try {
       var r = await fetch('/api/server/status');
       var s = await r.json();
-      var banner = document.getElementById('apiWarnBanner');
-      banner.style.display = s.api_enabled ? 'none' : 'flex';
+      if (!_apiDismissed)
+        document.getElementById('apiWarnBanner').style.display = s.api_enabled ? 'none' : 'flex';
+      if (!_userdataDismissed) {
+        _userdataPath = s.expected_userdata_path || null;
+        document.getElementById('userdataWarnBanner').style.display = s.userdata_ok ? 'none' : 'flex';
+      }
     } catch {}
   }
 
-  checkApiWarning();
+  checkWarnings();
 })();
 </script>

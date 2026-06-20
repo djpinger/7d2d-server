@@ -4,24 +4,32 @@ set -e
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
-# Create group/user matching the requested UID:GID if they don't already exist
 if ! getent group "${PGID}" > /dev/null 2>&1; then
     groupadd -g "${PGID}" gameserver
 fi
 if ! getent passwd "${PUID}" > /dev/null 2>&1; then
-    useradd -u "${PUID}" -g "${PGID}" -M -s /bin/bash gameserver
+    useradd -u "${PUID}" -g "${PGID}" -d /home/gameserver -m -s /bin/bash gameserver
 fi
 
-# Ensure volume mount points exist and are owned by the service user
-mkdir -p "${SERVERFILES_PATH:-/serverfiles}" \
+_home=$(getent passwd "${PUID}" | cut -d: -f6)
+mkdir -p "${_home}" \
+         "${SERVERFILES_PATH:-/serverfiles}" \
          "${CONFIG_DIR:-/config}" \
-         "${GAMEDATA_PATH:-/gamedata}"
+         "${GAMEDATA_PATH:-/gamedata}" \
+         "${LOG_DIR:-/logs}"
+
+# Allow the service user to access the Docker socket (needed to manage the game container).
+if [ -S /var/run/docker.sock ]; then
+    chmod 666 /var/run/docker.sock
+fi
+
 chown -R "${PUID}:${PGID}" \
+    "${_home}" \
     "${SERVERFILES_PATH:-/serverfiles}" \
     "${CONFIG_DIR:-/config}" \
     "${GAMEDATA_PATH:-/gamedata}" \
+    "${LOG_DIR:-/logs}" \
     /opt/steamcmd \
     /opt/panel
 
-# Drop privileges and exec Flask as the service user
 exec gosu "${PUID}:${PGID}" /opt/panel/bin/python /opt/panel/app/app.py

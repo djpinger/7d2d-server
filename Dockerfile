@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=en_US.UTF-8
 
-# 32-bit support required by the game server
+# 32-bit libs required by SteamCMD
 RUN dpkg --add-architecture i386 && \
     apt-get update && apt-get install -y \
         python3 python3-pip python3-venv \
@@ -14,7 +14,7 @@ RUN dpkg --add-architecture i386 && \
     && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install SteamCMD manually (avoids Ubuntu package EULA prompt)
+# SteamCMD — panel handles game install/update
 RUN mkdir -p /opt/steamcmd && \
     curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | \
     tar zxvf - -C /opt/steamcmd
@@ -27,13 +27,12 @@ RUN /opt/panel/bin/pip install --no-cache-dir -r /opt/panel/requirements.txt
 # Panel application
 COPY panel/ /opt/panel/app/
 
-# Startup script (runs as root, drops to PUID:PGID at runtime)
+# Entrypoint (runs as root, drops to PUID:PGID at runtime)
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Default volume mount points — entrypoint will chown to runtime PUID:PGID
-RUN mkdir -p /serverfiles /config /gamedata
+RUN mkdir -p /serverfiles /config /gamedata /logs
 
-EXPOSE 8090 26900 26901 26902 8080 8081
+EXPOSE 8090
 
 ENTRYPOINT ["/entrypoint.sh"]
