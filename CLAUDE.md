@@ -158,6 +158,12 @@ Key endpoints used by the panel:
 **Player API note:** Array is at `data.players`, not `data` directly.
 **Item search:** API ignores searchterm — fetch all, filter client-side.
 
+## Item Icons
+
+The game's built-in `IconHandler` (served at `/itemicons/{name}__{tint}.png`) fails on headless servers because the item icon atlas is 8192×8192 but Unity's null GPU device caps textures at 4096×4096. The atlas loads as a dummy texture, so the handler has nothing to serve and logs `[Web] IconHandler: Icons not loaded` for every request.
+
+**Fix:** `api_itemicon` in `app.py` serves icons directly from `SERVERFILES_PATH/Data/ItemIcons/{name}.png` (5161 PNG files shipped with the game). The game API is used as a fallback only. Tint color is not applied (base icon only), but icons display correctly.
+
 ## platform.cfg
 
 The game reads `serverfiles/platform.cfg` on startup to determine the platform stack:

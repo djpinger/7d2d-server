@@ -933,7 +933,14 @@ def api_inventory(steam_id):
 @app.route("/api/itemicon/<name>/<tint>")
 @login_required
 def api_itemicon(name, tint):
-    import traceback as _tb
+    # Serve directly from disk — the game's IconHandler fails on headless servers
+    # because the icon atlas (8192×8192) exceeds the null GPU's texture size limit.
+    icon_path = SERVERFILES_PATH / "Data" / "ItemIcons" / f"{name}.png"
+    if icon_path.exists():
+        resp = Response(icon_path.read_bytes(), mimetype="image/png")
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
+    # Fall back to game API (works when icons load correctly)
     try:
         r = _req.get(
             f"{GAME_API_URL}/itemicons/{name}__{tint}.png",
@@ -944,11 +951,8 @@ def api_itemicon(name, tint):
             resp = Response(r.content, mimetype="image/png")
             resp.headers["Cache-Control"] = "public, max-age=3600"
             return resp
-        print(f"[itemicon] game server returned {r.status_code} for {name}__{tint}", flush=True)
         return Response(status=r.status_code)
-    except Exception as e:
-        print(f"[itemicon] exception for {name}__{tint}: {e}", flush=True)
-        _tb.print_exc()
+    except Exception:
         return Response(status=502)
 
 
