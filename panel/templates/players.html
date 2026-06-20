@@ -294,7 +294,7 @@ function toggleInventory(steamId) {
 
 // ── Player table ─────────────────────────────────────────────────────────────
 
-function buildTable(players) {
+function buildTable(players, permMap) {
   if (!players.length) return '<div class="empty-state"><i class="bi bi-person-x d-block fs-2 mb-2"></i>No players online</div>';
 
   const rows = players.map(p => {
@@ -306,6 +306,13 @@ function buildTable(players) {
     const posStr = [pos.x, pos.y, pos.z].map(v => v != null ? Math.round(v) : '—').join(', ');
     const nameSafe = (p.name || '').replace(/'/g, "\\'");
 
+    const userId  = (p.platformId || {}).userId || '';
+    const perm    = permMap[userId] ?? 1000;
+    const permBadge = perm === 0   ? `<span class="badge bg-danger">Admin</span>`
+                    : perm === 100 ? `<span class="badge bg-warning text-dark">Mod</span>`
+                    : perm < 1000  ? `<span class="badge bg-secondary">${perm}</span>`
+                    :                `<span class="text-muted" style="font-size:0.8rem">Player</span>`;
+
     return `<tr>
       <td><strong>${p.name || '—'}</strong><br><small class="text-muted">${sid}</small></td>
       <td class="coord-cell">${posStr}</td>
@@ -315,15 +322,16 @@ function buildTable(players) {
       <td>${p.deaths ?? '—'}</td>
       <td>${p.score ?? '—'}</td>
       <td>${p.ping ?? '—'}</td>
+      <td>${permBadge}</td>
       <td>
         <div class="d-flex gap-1">
-          <button class="btn btn-xs btn-outline-secondary" title="Inventory" onclick="toggleInventory('${sid}')">
+          <button class="btn btn-xs btn-outline-info" title="Inventory" onclick="toggleInventory('${sid}')">
             <i class="bi bi-backpack"></i>
           </button>
-          <button class="btn btn-xs btn-outline-secondary" title="PM" onclick="openPm(${p.entityId}, '${nameSafe}')">
+          <button class="btn btn-xs btn-outline-primary" title="PM" onclick="openPm(${p.entityId}, '${nameSafe}')">
             <i class="bi bi-chat-dots"></i>
           </button>
-          <a href="/give?entityId=${p.entityId}&name=${encodeURIComponent(p.name||'')}" class="btn btn-xs btn-outline-secondary" title="Give item">
+          <a href="/give?entityId=${p.entityId}&name=${encodeURIComponent(p.name||'')}" class="btn btn-xs btn-outline-success" title="Give item">
             <i class="bi bi-box-seam"></i>
           </a>
           <button class="btn btn-xs btn-outline-warning" title="Kick" onclick="kickPlayer(${p.entityId}, '${nameSafe}')">
@@ -332,20 +340,20 @@ function buildTable(players) {
           <button class="btn btn-xs btn-outline-danger" title="Ban" onclick="openBan(${p.entityId}, '${nameSafe}')">
             <i class="bi bi-slash-circle"></i>
           </button>
-          <button class="btn btn-xs btn-outline-info" title="Set permission" onclick="openPerm('${(p.platformId||{}).platformId||'Steam'}','${(p.platformId||{}).userId||''}','${nameSafe}')">
+          <button class="btn btn-xs btn-outline-info" title="Set permission" onclick="openPerm('${(p.platformId||{}).platformId||'Steam'}','${userId}','${nameSafe}',${perm})">
             <i class="bi bi-shield"></i>
           </button>
         </div>
       </td>
     </tr>
     <tr class="inv-row" id="inv-${safeId}" style="display:none">
-      <td colspan="9"></td>
+      <td colspan="10"></td>
     </tr>`;
   }).join('');
 
   return `<table class="table table-sm">
     <thead><tr>
-      <th>Player</th><th>Position</th><th>HP</th><th>Lvl</th><th>Zk</th><th>Deaths</th><th>Score</th><th>Ping</th><th>Actions</th>
+      <th>Player</th><th>Position</th><th>HP</th><th>Lvl</th><th>Zk</th><th>Deaths</th><th>Score</th><th>Ping</th><th>Perm</th><th>Actions</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -353,11 +361,14 @@ function buildTable(players) {
 
 async function loadPlayers() {
   try {
-    const r = await fetch('/api/players');
-    const json = await r.json();
-    const players = (json.data && json.data.players) || [];
+    const [playersR, adminR] = await Promise.all([fetch('/api/players'), fetch('/api/admin')]);
+    const playersJson = await playersR.json();
+    const adminJson   = await adminR.json();
+    const players = (playersJson.data && playersJson.data.players) || [];
+    const permMap = {};
+    (adminJson.users || []).forEach(u => { permMap[u.userid] = parseInt(u.permission_level); });
     document.getElementById('playerCount').textContent = players.length;
-    document.getElementById('playerTableWrap').innerHTML = buildTable(players);
+    document.getElementById('playerTableWrap').innerHTML = buildTable(players, permMap);
   } catch(e) {
     document.getElementById('playerTableWrap').innerHTML =
       '<div class="empty-state text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Failed to load players</div>';
@@ -408,11 +419,14 @@ document.getElementById('banConfirmBtn').addEventListener('click', async () => {
 
 document.getElementById('refreshBtn').addEventListener('click', loadPlayers);
 
-function openPerm(platform, userId, name) {
+function openPerm(platform, userId, name, currentLevel) {
   document.getElementById('permPlatform').value = platform;
   document.getElementById('permUserId').value = userId;
   document.getElementById('permPlayerName').textContent = name;
-  document.getElementById('permLevel').value = '1000';
+  const level = currentLevel ?? 1000;
+  const sel = document.getElementById('permLevel');
+  sel.value = String(level);
+  if (!sel.value) sel.value = '1000';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('permModal')).show();
 }
 

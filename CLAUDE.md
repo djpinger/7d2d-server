@@ -158,6 +158,30 @@ Key endpoints used by the panel:
 **Player API note:** Array is at `data.players`, not `data` directly.
 **Item search:** API ignores searchterm — fetch all, filter client-side.
 
+## Allocs Server Fixes (v3.0 build `30_38_52`)
+
+Compatible with v3.0 b252+. Installed in `data/serverfiles/Mods/`:
+- `Allocs_CommonFunc` — core library
+- `Allocs_CommandExtensions` — adds `listknownplayers`, `showinventory`, `listlandprotection`, `removelandprotection` console commands
+- `Allocs_WebAndMapRendering` — adds web API endpoints and map tile rendering
+
+### Allocs API endpoints (port 8080)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/GetPlayersOnline` | Online players with level, health, kills, playtime (richer than built-in `/api/player`) |
+| `GET /api/GetPlayersLocation` | Player positions |
+| `GET /api/GetPlayerInventories` | All online players' inventories |
+| `GET /api/getplayerinventory?userid=Steam_XXX` | Single player inventory (bag, belt, equipment) |
+| `GET /api/getplayerlist` | Player list with ban status, totalplaytime, lastonline |
+| `GET /api/GetLandClaims` | Land claim positions |
+
+### What Allocs v3.0 does NOT yet expose
+- **Gamestage** and **lootstage** — not in any REST endpoint or console command. The v3.0 build is a stripped-down initial port; these were present in older Allocs builds and may return in a future revision.
+
+### Panel inventory endpoint
+The panel's `GET /api/inventory/<steam_id>` proxies to Allocs `getplayerinventory`. Allocs must be installed and the server running for this to work.
+
 ## Item Icons
 
 The game's built-in `IconHandler` (served at `/itemicons/{name}__{tint}.png`) fails on headless servers because the item icon atlas is 8192×8192 but Unity's null GPU device caps textures at 4096×4096. The atlas loads as a dummy texture, so the handler has nothing to serve and logs `[Web] IconHandler: Icons not loaded` for every request.
@@ -252,6 +276,6 @@ git pull && docker compose up -d --build
 
 - SSE endpoint: `/sse/?events=log` with `events` query param (not `/sse/log`)
 - SSE event name: `logLine` (not the default `message`)
-- Alloc Fixes (`TFP_WebServer`) is **incompatible with v3.0** — keep disabled
-- Loot stage / game stage not exposed by v3.0 API (was Allocs-specific)
+- Allocs `30_38_52` is compatible with v3.0 b252+ and installed — see Allocs section above
+- Loot stage / game stage not exposed by v3.0 built-in API or current Allocs build
 - `appmanifest_294420.acf` uses `"BetaKey"` (mixed case) — always use `re.IGNORECASE` when parsing it

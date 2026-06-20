@@ -28,7 +28,7 @@ Full visual editor for the v3.0 SandboxCode — 150+ individual settings across 
 Live log stream (SSE) with recent history pre-loaded on connect. Color-coded by severity. Command input bar sends commands via the game API.
 
 ### Players
-Online player list (polled every 30s). Per-player actions: PM, Give Items, Kick, Ban. Expandable inventory view per player.
+Online player list (polled every 30s). Shows permission level per player (Admin / Mod / Player). Per-player actions: PM, Give Items, Kick, Ban, Set Permission. Expandable inventory view per player (requires Allocs mod).
 
 ### Give Items
 Full item catalogue (~10k non-block items) loaded from the game API, filtered client-side. Quality and quantity selectors.
@@ -133,6 +133,14 @@ Dashboard → **Start**. First launch generates the world (several minutes). Rea
 | `26901 UDP` | Game |
 | `26902 UDP` | Game |
 | `18080` | Game built-in web API (optional external access) |
+
+## Allocs Server Fixes
+
+Allocs build `30_38_52` is compatible with v3.0 b252+ and extends the server's web API with player inventory access, land claims, map rendering, and additional console commands (`listknownplayers`, `showinventory`, etc.).
+
+Install via Dashboard → Mods → Install/Update Allocs. The player inventory viewer on the Players page requires Allocs to be installed and the server running.
+
+**Note:** Gamestage and lootstage are not yet exposed by the v3.0 Allocs build. These were available in older builds and may return in a future revision.
 
 ## EOS / Cross-Platform
 
