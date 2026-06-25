@@ -159,6 +159,49 @@
     .navbar-brand-text span { color: #e63946; }
     .navbar-meta { font-size: 0.8rem; color: #6c757d; margin-left: 0.75rem; }
 
+    /* ── Installed mods list ────────────────────────── */
+    .mods-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-width: 900px;
+    }
+    .mod-row {
+      background-color: #1f2b3e;
+      border: 1px solid #2d3f57;
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+    }
+    .mod-main {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .mod-name {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: #e9ecef;
+    }
+    .mod-version {
+      font-size: 0.76rem;
+      color: #6c757d;
+      background: #253347;
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+    }
+    .mod-author {
+      font-size: 0.78rem;
+      color: #5a7a9a;
+      margin-left: auto;
+    }
+    .mod-desc {
+      font-size: 0.78rem;
+      color: #6c757d;
+      margin-top: 0.25rem;
+      line-height: 1.4;
+    }
+
     /* ── Restart notice ─────────────────────────── */
     .restart-notice {
       background-color: #2d2003;
@@ -357,6 +400,34 @@
         {%- for section in sections %}
         <div class="section-panel{% if not loop.first %} d-none{% endif %}"
              id="panel-{{ section.id }}">
+
+          {%- if section.id == 'mods' %}
+          <!-- Installed mods list -->
+          <div class="group-section">
+            <div class="group-header">Installed Mods ({{ installed_mods | length }})</div>
+            {%- if installed_mods %}
+            <div class="mods-list">
+              {%- for mod in installed_mods %}
+              <div class="mod-row">
+                <div class="mod-main">
+                  <span class="mod-name">{{ mod.display_name }}</span>
+                  {%- if mod.version %}<span class="mod-version">v{{ mod.version }}</span>{%- endif %}
+                  {%- if mod.author %}<span class="mod-author">by {{ mod.author }}</span>{%- endif %}
+                </div>
+                {%- if mod.description %}
+                <div class="mod-desc">{{ mod.description }}</div>
+                {%- endif %}
+              </div>
+              {%- endfor %}
+            </div>
+            {%- else %}
+            <p class="text-muted" style="font-size:0.85rem">No mods found in the Mods directory.</p>
+            {%- endif %}
+          </div>
+
+          <div class="group-header" style="margin-top:1.5rem">Settings</div>
+          {%- endif %}
+
           {%- if section.groups is defined %}
             {%- for group in section.groups %}
             <div class="group-section">

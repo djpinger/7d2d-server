@@ -233,6 +233,28 @@ Settings organized via `_SECTIONS` (list of dicts with `id`, `label`, `icon`, `f
 
 `GameWorld.options` populated dynamically by `_available_worlds()` (scans `SERVERFILES_PATH/Data/Worlds/`).
 
+### Config sections
+
+| Section | Key fields |
+|---|---|
+| Server | ServerName, ServerDescription, ServerPassword, Region, Language, AdminFileName, IgnoreEOSSanctions |
+| Network | Port, visibility, slots, WebDashboard, EAC, BattlEye, ServerAllowCrossplay, ServerDisabledNetworkProtocols, ServerMaxWorldTransferSpeedKiBs, MaxUncoveredMapChunksPerPlayer |
+| Telnet | TelnetEnabled, TelnetPort, TelnetPassword, TelnetFailedLoginLimit, TelnetFailedLoginsBlocktime |
+| Platform | crossplatform, serverplatforms (both stored in `platform.cfg`) |
+| Gameplay | World, seed, size, GameName, PlayerKillingMode, day/night length, death/drop penalties, block damage, XP, safe zone, AllowSpawnNearFriend, PersistentPlayerProfiles, CameraRestrictionMode, bedroll settings |
+| Land Claims | LandClaimSize, LandClaimCount, LandClaimDeadZone, LandClaimExpiryTime, LandClaimDecayMode, LandClaimOfflineDelay, online/offline durability modifiers |
+| Zombies | EnemyDifficulty, EnemySpawnMode, MaxSpawnedZombies, MaxSpawnedAnimals, ServerMaxAllowedViewDistance, MaxQueuedMeshLayers |
+| Sandbox | SandboxCode |
+| Performance | CpuUsage, ServerCpuCount, DynamicMesh settings, EnableMapRendering, MaxChunkAge, SaveDataLimit |
+| Mods | ModsEnabled, ModList — plus a read-only installed mods list (see below) |
+| Twitch | TwitchServerPermission, TwitchBloodMoonAllowed |
+
+**Name note:** The XML key is `MaxUncoveredMapChunksPerPlayer` (not `MaxUncoveredMapChunks`).
+
+### Installed mods list
+
+`_installed_mods()` scans `SERVERFILES_PATH/Mods/`, reads each subdirectory's `ModInfo.xml`, and returns a list of `{dir, name, display_name, version, author, description, website}` dicts. The Mods section in `config.html` renders this as a read-only list above the settings fields. Uses `ET.parse` — entries that fail to parse fall back to showing the directory name.
+
 ### Config API
 - `GET /api/config` — returns merged flat JSON dict from both `sdtdserver.xml` and `platform.cfg`
 - `POST /api/config` — accepts `{"updates": {"Key": "value", ...}}`, routes to the correct file

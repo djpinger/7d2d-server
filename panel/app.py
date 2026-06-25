@@ -546,14 +546,20 @@ def game_api_post(path, body=None, timeout=10):
 _SECTIONS = [
     {"id": "server",      "label": "Server",      "icon": "bi-server",
      "fields": ["ServerName","ServerDescription","ServerWebsiteURL","ServerPassword",
-                "ServerLoginConfirmationText","Region","Language"]},
+                "ServerLoginConfirmationText","Region","Language",
+                "AdminFileName","IgnoreEOSSanctions"]},
     {"id": "network",     "label": "Network",     "icon": "bi-wifi",
      "fields": ["ServerPort","ServerVisibility","ServerMaxPlayerCount","NetworkPingLimit",
                 "ServerReservedSlots","ServerReservedSlotsPermission",
                 "ServerAdminSlots","ServerAdminSlotsPermission",
-                "WebDashboardEnabled","WebDashboardPort",
+                "WebDashboardEnabled","WebDashboardPort","WebDashboardUrl",
                 "EACEnabled","BattlEye","HideCommandExecutionLog",
-                "MaxUncoveredMapChunks","TerminalWindowEnabled"]},
+                "MaxUncoveredMapChunksPerPlayer","TerminalWindowEnabled",
+                "ServerAllowCrossplay","ServerDisabledNetworkProtocols",
+                "ServerMaxWorldTransferSpeedKiBs"]},
+    {"id": "telnet",      "label": "Telnet",      "icon": "bi-terminal",
+     "fields": ["TelnetEnabled","TelnetPort","TelnetPassword",
+                "TelnetFailedLoginLimit","TelnetFailedLoginsBlocktime"]},
     {"id": "platform",    "label": "Platform",    "icon": "bi-hdd-network",
      "fields": ["crossplatform","serverplatforms"]},
     {"id": "gameplay",    "label": "Gameplay",    "icon": "bi-joystick",
@@ -562,16 +568,27 @@ _SECTIONS = [
                 "DeathPenalty","DropOnDeath","DropOnQuit",
                 "BlockDamagePlayer","BlockDamageAI","BlockDamageAIBM",
                 "XPMultiplier","PartySharedKillRange","PlayerSafeZoneLevel","PlayerSafeZoneHours",
+                "AllowSpawnNearFriend","PersistentPlayerProfiles","CameraRestrictionMode",
+                "BedrollDeadZoneSize","BedrollExpiryTime",
                 "UserDataFolder","SaveGameFolder"]},
+    {"id": "landclaims",  "label": "Land Claims", "icon": "bi-flag",
+     "fields": ["LandClaimSize","LandClaimCount","LandClaimDeadZone",
+                "LandClaimExpiryTime","LandClaimDecayMode","LandClaimOfflineDelay",
+                "LandClaimOnlineDurabilityModifier","LandClaimOfflineDurabilityModifier"]},
     {"id": "zombies",     "label": "Zombies",     "icon": "bi-virus",
      "fields": ["EnemyDifficulty","EnemySpawnMode","MaxSpawnedZombies",
                 "MaxSpawnedAnimals","ServerMaxAllowedViewDistance","MaxQueuedMeshLayers"]},
     {"id": "sandbox",     "label": "Sandbox",     "icon": "bi-sliders2",
      "fields": ["SandboxCode"]},
     {"id": "performance", "label": "Performance", "icon": "bi-cpu",
-     "fields": ["CpuUsage","ServerCpuCount","RootDataFolder"]},
+     "fields": ["CpuUsage","ServerCpuCount","RootDataFolder",
+                "DynamicMeshEnabled","DynamicMeshLandClaimOnly",
+                "DynamicMeshLandClaimBuffer","DynamicMeshMaxItemCache",
+                "EnableMapRendering","MaxChunkAge","SaveDataLimit"]},
     {"id": "mods",        "label": "Mods",        "icon": "bi-puzzle",
      "fields": ["ModsEnabled","ModList"]},
+    {"id": "twitch",      "label": "Twitch",      "icon": "bi-twitch",
+     "fields": ["TwitchServerPermission","TwitchBloodMoonAllowed"]},
 ]
 
 _FIELD_TYPES = {
@@ -579,11 +596,24 @@ _FIELD_TYPES = {
     "WebDashboardPort": "number",
     "EACEnabled": "boolean", "BattlEye": "boolean", "TerminalWindowEnabled": "boolean",
     "BuildCreate": "boolean", "ModsEnabled": "boolean", "HideCommandExecutionLog": "boolean",
+    "ServerAllowCrossplay": "boolean", "IgnoreEOSSanctions": "boolean",
+    "TelnetEnabled": "boolean", "TwitchBloodMoonAllowed": "boolean",
+    "DynamicMeshEnabled": "boolean", "DynamicMeshLandClaimOnly": "boolean",
+    "PersistentPlayerProfiles": "boolean", "EnableMapRendering": "boolean",
     "SandboxCode": "sandbox_code",
     "ServerPort": "number", "ServerMaxPlayerCount": "number", "NetworkPingLimit": "number",
     "ServerReservedSlots": "number", "ServerReservedSlotsPermission": "number",
     "ServerAdminSlots": "number", "ServerAdminSlotsPermission": "number",
-    "MaxUncoveredMapChunks": "number",
+    "MaxUncoveredMapChunksPerPlayer": "number",
+    "ServerMaxWorldTransferSpeedKiBs": "number",
+    "TelnetPort": "number", "TelnetFailedLoginLimit": "number", "TelnetFailedLoginsBlocktime": "number",
+    "TwitchServerPermission": "number",
+    "DynamicMeshLandClaimBuffer": "number", "DynamicMeshMaxItemCache": "number",
+    "LandClaimSize": "number", "LandClaimCount": "number", "LandClaimDeadZone": "number",
+    "LandClaimExpiryTime": "number", "LandClaimOfflineDelay": "number",
+    "LandClaimOnlineDurabilityModifier": "number", "LandClaimOfflineDurabilityModifier": "number",
+    "BedrollDeadZoneSize": "number", "BedrollExpiryTime": "number",
+    "MaxChunkAge": "number", "SaveDataLimit": "number",
     "DayNightLength": "number", "DayLightLength": "number", "XPMultiplier": "number",
     "PartySharedKillRange": "number", "PlayerSafeZoneLevel": "number",
     "PlayerSafeZoneHours": "number", "MaxSpawnedZombies": "number",
@@ -595,6 +625,8 @@ _FIELD_TYPES = {
     "PlayerKillingMode": "select", "DeathPenalty": "select", "DropOnDeath": "select",
     "DropOnQuit": "select", "BlockDamagePlayer": "select", "BlockDamageAI": "select",
     "BlockDamageAIBM": "select", "EnemyDifficulty": "select", "EnemySpawnMode": "select",
+    "LandClaimDecayMode": "select", "AllowSpawnNearFriend": "select",
+    "CameraRestrictionMode": "select",
     "CpuUsage": "select",
 }
 
@@ -624,8 +656,17 @@ _FIELD_META = {
     "EACEnabled":                    {"label": "Easy Anti-Cheat"},
     "BattlEye":                      {"label": "BattlEye"},
     "HideCommandExecutionLog":       {"label": "Hide Command Log"},
-    "MaxUncoveredMapChunks":         {"label": "Max Uncovered Map Chunks"},
+    "MaxUncoveredMapChunksPerPlayer":{"label": "Max Uncovered Map Chunks (per player)"},
     "TerminalWindowEnabled":         {"label": "Terminal Window"},
+    "ServerAllowCrossplay":          {"label": "Allow Crossplay"},
+    "ServerDisabledNetworkProtocols":{"label": "Disabled Network Protocols"},
+    "ServerMaxWorldTransferSpeedKiBs":{"label": "Max World Transfer Speed (KiB/s)"},
+    "WebDashboardUrl":               {"label": "Web Dashboard URL"},
+    "TelnetEnabled":                 {"label": "Telnet Enabled"},
+    "TelnetPort":                    {"label": "Telnet Port"},
+    "TelnetPassword":                {"label": "Telnet Password"},
+    "TelnetFailedLoginLimit":        {"label": "Failed Login Limit"},
+    "TelnetFailedLoginsBlocktime":   {"label": "Failed Login Block Time (s)"},
     "GameWorld":                     {"label": "World"},
     "WorldGenSeed":                  {"label": "World Seed"},
     "WorldGenSize":                  {"label": "World Size", "options": [
@@ -649,6 +690,11 @@ _FIELD_META = {
     "PartySharedKillRange":          {"label": "Party Kill Share Range"},
     "PlayerSafeZoneLevel":           {"label": "Safe Zone Level"},
     "PlayerSafeZoneHours":           {"label": "Safe Zone Hours"},
+    "AllowSpawnNearFriend":          {"label": "Allow Spawn Near Friend", "options": [{"value":"0","label":"Everywhere"},{"value":"1","label":"Near Bedroll Only"},{"value":"2","label":"Near Bedroll or Friend"}]},
+    "PersistentPlayerProfiles":      {"label": "Persistent Player Profiles"},
+    "CameraRestrictionMode":         {"label": "Camera Restriction Mode", "options": [{"value":"0","label":"None"},{"value":"1","label":"Limited"},{"value":"2","label":"Forced 3rd Person"}]},
+    "BedrollDeadZoneSize":           {"label": "Bedroll Dead Zone Size"},
+    "BedrollExpiryTime":             {"label": "Bedroll Expiry Time (days)"},
     "UserDataFolder":                {"label": "User Data Folder",
                                      "fix_notice": "If not set to the volume path, save games and worlds are stored inside the container and permanently lost on rebuild or update."},
     "SaveGameFolder":                {"label": "Save Game Folder"},
@@ -662,8 +708,27 @@ _FIELD_META = {
     "CpuUsage":                      {"label": "CPU Usage", "options": [{"value":"Default","label":"Default"},{"value":"Minimal","label":"Minimal"},{"value":"High","label":"High"},{"value":"Aggressive","label":"Aggressive"}]},
     "ServerCpuCount":                {"label": "Server CPU Count"},
     "RootDataFolder":                {"label": "Root Data Folder"},
+    "DynamicMeshEnabled":            {"label": "Dynamic Mesh Enabled"},
+    "DynamicMeshLandClaimOnly":      {"label": "Dynamic Mesh for Land Claims Only"},
+    "DynamicMeshLandClaimBuffer":    {"label": "Dynamic Mesh Land Claim Buffer"},
+    "DynamicMeshMaxItemCache":       {"label": "Dynamic Mesh Max Item Cache"},
+    "EnableMapRendering":            {"label": "Enable Map Rendering"},
+    "MaxChunkAge":                   {"label": "Max Chunk Age (-1 = unlimited)"},
+    "SaveDataLimit":                 {"label": "Save Data Limit (-1 = unlimited)"},
+    "LandClaimSize":                 {"label": "Claim Block Size"},
+    "LandClaimCount":                {"label": "Claim Blocks Per Player"},
+    "LandClaimDeadZone":             {"label": "Min Distance Between Claims"},
+    "LandClaimExpiryTime":           {"label": "Claim Expiry Time (days)"},
+    "LandClaimDecayMode":            {"label": "Claim Decay Mode", "options": [{"value":"0","label":"Linear"},{"value":"1","label":"Exponential"},{"value":"2","label":"Full Protection"}]},
+    "LandClaimOfflineDelay":         {"label": "Offline Protection Delay (mins)"},
+    "LandClaimOnlineDurabilityModifier": {"label": "Online Durability Modifier"},
+    "LandClaimOfflineDurabilityModifier":{"label": "Offline Durability Modifier"},
     "ModsEnabled":                   {"label": "Mods Enabled"},
     "ModList":                       {"label": "Mod List"},
+    "TwitchServerPermission":        {"label": "Twitch Permission Level"},
+    "TwitchBloodMoonAllowed":        {"label": "Twitch Blood Moon Votes Allowed"},
+    "AdminFileName":                 {"label": "Admin File Name"},
+    "IgnoreEOSSanctions":            {"label": "Ignore EOS Sanctions"},
     "crossplatform":                 {"label": "Cross-Platform Backend",
                                      "options": [{"value": "EOS",  "label": "EOS (Epic Online Services)"},
                                                  {"value": "",     "label": "Disabled (Steam only, no internet required)"}]},
@@ -671,20 +736,48 @@ _FIELD_META = {
 }
 
 _FIELD_DESCRIPTIONS = {
-    "SandboxCode":          "Generate in-game via New Game → Advanced → Sandbox Options → Copy Code, or use the Sandbox tab to build and reset the code visually.",
-    "ServerPassword":       "Leave blank for no password",
-    "WorldGenSize":         "Only applies when GameWorld = RWG",
-    "WebDashboardEnabled":  "Required for the panel to communicate with the game server (players, commands, stats). Must be true.",
-    "WebDashboardPort":     "Must match the port mapped in docker-compose.yml (default 8080).",
-    "EACEnabled":           "Easy Anti-Cheat — disable for mods that require it",
-    "GameName":             "Also used as the save directory name",
-    "DayNightLength":       "Real-time minutes per in-game day",
-    "DayLightLength":       "In-game hours of daylight (max 24)",
-    "PlayerSafeZoneLevel":  "Player level below which the safe zone applies (0 = disabled)",
-    "WorldGenSeed":         "Any text or number — determines the generated map layout",
-    "XPMultiplier":         "100 = default, 200 = double XP",
-    "crossplatform":        "Set to 'Disabled' to remove the EOS internet requirement on startup. Steam-only — no console cross-play. Stored in platform.cfg, not sdtdserver.xml.",
-    "serverplatforms":      "Comma-separated list of allowed platforms (Steam, LAN, XBL, PSN, EOS). XBL/PSN require EOS enabled above. Stored in platform.cfg.",
+    "SandboxCode":                   "Generate in-game via New Game → Advanced → Sandbox Options → Copy Code, or use the Sandbox tab to build and reset the code visually.",
+    "ServerPassword":                "Leave blank for no password",
+    "WorldGenSize":                  "Only applies when GameWorld = RWG",
+    "WebDashboardEnabled":           "Required for the panel to communicate with the game server (players, commands, stats). Must be true.",
+    "WebDashboardPort":              "Must match the port mapped in docker-compose.yml (default 8080).",
+    "EACEnabled":                    "Easy Anti-Cheat — disable for mods that require it",
+    "GameName":                      "Also used as the save directory name",
+    "DayNightLength":                "Real-time minutes per in-game day",
+    "DayLightLength":                "In-game hours of daylight (max 24)",
+    "PlayerSafeZoneLevel":           "Player level below which the safe zone applies (0 = disabled)",
+    "WorldGenSeed":                  "Any text or number — determines the generated map layout",
+    "XPMultiplier":                  "100 = default, 200 = double XP",
+    "crossplatform":                 "Set to 'Disabled' to remove the EOS internet requirement on startup. Steam-only — no console cross-play. Stored in platform.cfg, not sdtdserver.xml.",
+    "serverplatforms":               "Comma-separated list of allowed platforms (Steam, LAN, XBL, PSN, EOS). XBL/PSN require EOS enabled above. Stored in platform.cfg.",
+    "MaxUncoveredMapChunksPerPlayer":"Maximum number of map chunks each player may uncover (-1 = unlimited)",
+    "ServerMaxWorldTransferSpeedKiBs":"Maximum speed for world data transfers to clients (KiB/s)",
+    "ServerDisabledNetworkProtocols":"Comma-separated list of network protocols to disable (e.g. SteamNetworking)",
+    "ServerAllowCrossplay":          "Allow players from non-Steam platforms to join",
+    "TelnetPassword":                "Leave blank to disable Telnet authentication",
+    "TelnetFailedLoginLimit":        "Number of failed Telnet logins before the IP is blocked",
+    "TelnetFailedLoginsBlocktime":   "Duration (seconds) an IP is blocked after too many failed logins",
+    "BedrollDeadZoneSize":           "Radius (blocks) around a bedroll where enemies cannot spawn",
+    "BedrollExpiryTime":             "Days until an abandoned bedroll expires (0 = never)",
+    "LandClaimSize":                 "Side length of each claim block area in world units",
+    "LandClaimDeadZone":             "Minimum distance required between two players' claim blocks",
+    "LandClaimExpiryTime":           "Days offline before a claim block expires (0 = never)",
+    "LandClaimOfflineDelay":         "Minutes after a player goes offline before reduced durability kicks in (0 = immediately)",
+    "LandClaimOnlineDurabilityModifier": "Block damage multiplier inside claims when owner is online (higher = tougher)",
+    "LandClaimOfflineDurabilityModifier":"Block damage multiplier inside claims when owner is offline (higher = tougher)",
+    "DynamicMeshEnabled":            "Enable dynamic mesh loading for improved performance",
+    "DynamicMeshLandClaimOnly":      "Only apply dynamic mesh within land claim areas",
+    "DynamicMeshLandClaimBuffer":    "Extra chunk radius around claims to keep in the dynamic mesh",
+    "DynamicMeshMaxItemCache":       "Maximum number of mesh items held in cache",
+    "MaxChunkAge":                   "Frames a chunk stays loaded after players leave (-1 = unlimited)",
+    "SaveDataLimit":                 "Maximum save data size in MB (-1 = unlimited)",
+    "EnableMapRendering":            "Enable server-side map tile rendering (requires Allocs MapRendering mod)",
+    "TwitchServerPermission":        "Minimum permission level required to use Twitch integration commands",
+    "TwitchBloodMoonAllowed":        "Allow Twitch viewers to vote for a Blood Moon event",
+    "AdminFileName":                 "Filename of the server admin XML file (relative to UserDataFolder/Saves/)",
+    "IgnoreEOSSanctions":            "Allow players banned by Epic Online Services to connect",
+    "CameraRestrictionMode":         "Restrict allowed camera perspectives for players",
+    "WebDashboardUrl":               "Public URL of the web dashboard (used in some in-game links)",
 }
 
 
@@ -865,6 +958,38 @@ def dashboard():
 
 
 # ─── Allocs Server Fixes ──────────────────────────────────────────────────────
+
+def _installed_mods() -> list:
+    mods_dir = SERVERFILES_PATH / "Mods"
+    if not mods_dir.is_dir():
+        return []
+    result = []
+    for entry in sorted(mods_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        info_file = entry / "ModInfo.xml"
+        if not info_file.exists():
+            continue
+        try:
+            root = ET.parse(info_file).getroot()
+            def _val(tag):
+                node = root.find(tag)
+                return node.get("value", "").strip() if node is not None else ""
+            result.append({
+                "dir":          entry.name,
+                "name":         _val("Name"),
+                "display_name": _val("DisplayName") or _val("Name"),
+                "version":      _val("Version"),
+                "author":       _val("Author"),
+                "description":  _val("Description"),
+                "website":      _val("Website"),
+            })
+        except Exception:
+            result.append({"dir": entry.name, "name": entry.name,
+                           "display_name": entry.name, "version": "",
+                           "author": "", "description": "", "website": ""})
+    return result
+
 
 def _allocs_status():
     mods_dir  = SERVERFILES_PATH / "Mods"
@@ -1098,7 +1223,8 @@ def config():
     }
     return render_template("config.html", values=values, sections=_SECTIONS,
                            field_meta=meta, field_types=_FIELD_TYPES,
-                           descriptions=_FIELD_DESCRIPTIONS)
+                           descriptions=_FIELD_DESCRIPTIONS,
+                           installed_mods=_installed_mods())
 
 
 @app.route("/api/config", methods=["GET"])
