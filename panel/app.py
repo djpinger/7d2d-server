@@ -1285,35 +1285,29 @@ def _count_players(save_path: Path):
 @app.route("/saves")
 @login_required
 def saves():
-    worlds = []
-    active_name, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
-    active_name = (active_name if isinstance(active_name, dict) else {}).get("GameName", "")
+    saves_list = []
+    cfg, _ = parse_config() if CONFIG_PATH.exists() else ({}, [])
+    active_name = cfg.get("GameName", "")
 
     if SAVES_ROOT.exists():
         for world_dir in sorted(SAVES_ROOT.iterdir()):
             if not world_dir.is_dir():
                 continue
-            world_saves = []
+            is_rwg = (WORLDS_ROOT / world_dir.name).is_dir()
             for save_dir in sorted(world_dir.iterdir()):
                 if not save_dir.is_dir():
                     continue
-                world_saves.append({
-                    "name":        save_dir.name,
-                    "path":        str(save_dir),
-                    "size":        _fmt_size(_dir_size(save_dir)),
-                    "players":     _count_players(save_dir),
-                    "modified":    datetime.fromtimestamp(save_dir.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
-                    "active":      save_dir.name == active_name,
+                saves_list.append({
+                    "world":      world_dir.name,
+                    "save":       save_dir.name,
+                    "size":       _fmt_size(_dir_size(save_dir)),
+                    "players":    _count_players(save_dir),
+                    "last_mod":   datetime.fromtimestamp(save_dir.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                    "is_current": save_dir.name == active_name,
+                    "is_rwg":     is_rwg,
                 })
-            worlds.append({"name": world_dir.name, "saves": world_saves})
 
-    rwg_worlds = []
-    if WORLDS_ROOT.exists():
-        for w in sorted(WORLDS_ROOT.iterdir()):
-            if w.is_dir():
-                rwg_worlds.append({"name": w.name, "path": str(w), "size": _fmt_size(_dir_size(w))})
-
-    return render_template("saves.html", worlds=worlds, rwg_worlds=rwg_worlds)
+    return render_template("saves.html", saves=saves_list)
 
 
 _WIPE_KEEP = {"GeneratedWorld", "map"}
