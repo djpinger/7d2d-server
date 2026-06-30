@@ -287,6 +287,7 @@ def server_install(branch=None):
             if p.returncode == 0:
                 _log_push("Installation complete!", source="panel")
                 _ensure_default_config()
+                _write_installed_branch(branch)
             else:
                 _log_push(f"Installation failed (exit {p.returncode})", "Error", "panel")
         except Exception as e:
@@ -312,8 +313,25 @@ def _server_installed():
     return (SERVERFILES_PATH / "7DaysToDieServer.x86_64").exists()
 
 
+_BRANCH_FILE = SERVERFILES_PATH / "steamapps" / ".installed_branch"
+
+def _write_installed_branch(branch: str):
+    try:
+        _BRANCH_FILE.write_text(branch)
+    except Exception:
+        pass
+
 def _installed_branch() -> str:
-    """Read the branch from the SteamCMD app manifest. Returns 'public' if not found."""
+    """Return the installed branch. Prefers our sidecar file (written after each
+    successful install) because SteamCMD doesn't always clear BetaKey when
+    switching back to public."""
+    if _BRANCH_FILE.exists():
+        try:
+            b = _BRANCH_FILE.read_text().strip()
+            if b:
+                return b
+        except Exception:
+            pass
     manifest = SERVERFILES_PATH / "steamapps" / "appmanifest_294420.acf"
     if not manifest.exists():
         return GAME_BRANCH
