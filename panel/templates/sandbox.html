@@ -242,8 +242,8 @@ const OPTIONS = [
   {id:'XPMultiplier',      enumId:18, label:'XP Multiplier',           cat:'Player', group:'Progression',      type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,1.75,2,3,5],                  labels:['0%','25%','50%','75%','100%','125%','150%','175%','200%','300%','500%']},
   {id:'ShowXP',            enumId:19, label:'Show XP',                 cat:'Player', group:'Progression',      type:'int',   def:0,  vals:[0,1,2,3],         labels:['All','Self Only','Party','None']},
   {id:'PlayerLevelBonusApplied',enumId:11,label:'Level Stat Bonus',    cat:'Player', group:'Progression',      type:'bool',  def:1,  vals:[false,true]},
-  {id:'SkillGainRate',     enumId:116,label:'Skill Gain Rate',         cat:'Player', group:'Progression',      type:'int',   def:0,  vals:[1,2,3,4,5]},
-  {id:'SkillPointsPerLevel',enumId:117,label:'Skill Gain Amount',      cat:'Player', group:'Progression',      type:'int',   def:1,  vals:[0,1,2,3,4,5,6,7]},
+  {id:'SkillGainRate',     enumId:116,label:'Skill Gain Rate',         cat:'Player', group:'Progression',      type:'int',   def:0,  vals:[1,2,3,4,5],        labels:['Every Level (Default)','Every 2 Levels','Every 3 Levels','Every 4 Levels','Every 5 Levels']},
+  {id:'SkillPointsPerLevel',enumId:117,label:'Skill Gain Amount',      cat:'Player', group:'Progression',      type:'int',   def:1,  vals:[0,1,2,3,4,5,6,7],  labels:['None','1 (Default)','2','3','4','5','6','7']},
 
   {id:'JarRefund',         enumId:12, label:'Jar Refund',              cat:'Player', group:'Survival',         type:'float', def:7,  vals:[0,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1],          labels:['0%','5%','10%','20%','30%','40%','50%','60%','70%','80%','90%','100%']},
   {id:'NewbieCoat',        enumId:15, label:'New Player Buff',         cat:'Player', group:'Survival',         type:'bool',  def:1,  vals:[false,true]},
@@ -317,7 +317,7 @@ const OPTIONS = [
   {id:'ShowDayTime',       enumId:72, label:'Show Day/Time',            cat:'World',  group:'HUD & Navigation', type:'bool', def:1,  vals:[false,true]},
 
   // ── Resources ─────────────────────────────────────────────────────────────
-  {id:'LootMaxTier',       enumId:77, label:'Loot Max Tier',            cat:'Resources',group:'Loot Stage',     type:'int',   def:5,  vals:[1,2,3,4,5,6]},
+  {id:'LootMaxTier',       enumId:77, label:'Loot Max Tier',            cat:'Resources',group:'Loot Stage',     type:'int',   def:5,  vals:[1,2,3,4,5,6],      labels:['Tier 1','Tier 2','Tier 3','Tier 4','Tier 5','Tier 6 (Default)']},
   {id:'GlobalLSModifier',  enumId:62, label:'Global Loot Stage',        cat:'Resources',group:'Loot Stage',     type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
   {id:'BiomeLSModifier',   enumId:63, label:'Biome Loot Stage',         cat:'Resources',group:'Loot Stage',     type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
   {id:'POITierLSModifier', enumId:64, label:'POI Loot Stage',           cat:'Resources',group:'Loot Stage',     type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
@@ -349,7 +349,7 @@ const OPTIONS = [
   {id:'BackpackCrafting',  enumId:94, label:'Backpack Crafting',        cat:'Crafting',group:'General',          type:'int',   def:1,  vals:[0,1,2,3],         labels:['Off','Normal','All Recipes','Workstation-like']},
   {id:'WorkstationCrafting',enumId:95,label:'Workstation Crafting',     cat:'Crafting',group:'General',          type:'bool',  def:1,  vals:[false,true]},
   {id:'CraftingProgression',enumId:96,label:'Crafting Progression',     cat:'Crafting',group:'General',          type:'bool',  def:1,  vals:[false,true]},
-  {id:'CraftingMaxTier',   enumId:100,label:'Crafting Max Tier',        cat:'Crafting',group:'General',          type:'int',   def:5,  vals:[1,2,3,4,5,6]},
+  {id:'CraftingMaxTier',   enumId:100,label:'Crafting Max Tier',        cat:'Crafting',group:'General',          type:'int',   def:5,  vals:[1,2,3,4,5,6],      labels:['Tier 1','Tier 2','Tier 3','Tier 4','Tier 5','Tier 6 (Default)']},
 
   {id:'CraftingTime',      enumId:97, label:'Crafting Timer',           cat:'Crafting',group:'Rates',            type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
   {id:'CraftingInput',     enumId:98, label:'Crafting Cost',            cat:'Crafting',group:'Rates',            type:'float', def:4,  vals:[0,0.25,0.5,0.75,1,1.25,1.5,2,3],                         labels:['0%','25%','50%','75%','100%','125%','150%','200%','300%']},
@@ -367,7 +367,7 @@ const OPTIONS = [
   {id:'ItemDegradation',   enumId:21, label:'Item Degradation',        cat:'Crafting',group:'Repair & Magazines',type:'float',def:3,  vals:[0,0.25,0.5,1,1.5,2],                                      labels:['Off','25%','50%','Default','150%','200%']},
   {id:'RepairTypes',       enumId:113,label:'Repair Method',            cat:'Crafting',group:'Repair & Magazines',type:'int', def:3,  vals:[0,1,2,3],         labels:['Nothing','Primitive Only','Standard','Both']},
   {id:'MaxDegradationAmount',enumId:114,label:'Repair Degradation',     cat:'Crafting',group:'Repair & Magazines',type:'float',def:0, vals:[0,0.05,0.1,0.15,0.2,0.25],                                labels:['None','5%','10%','15%','20%','25%']},
-  {id:'PointsPerMagazine', enumId:115,label:'Magazine Progress',        cat:'Crafting',group:'Repair & Magazines',type:'int', def:1,  vals:[0,1,2,3,4,5,6,7]},
+  {id:'PointsPerMagazine', enumId:115,label:'Magazine Progress',        cat:'Crafting',group:'Repair & Magazines',type:'int', def:1,  vals:[0,1,2,3,4,5,6,7],  labels:['Off','1 (Default)','2','3','4','5','6','7']},
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
   {id:'QuestsEnabled',     enumId:118,label:'Quests Enabled',           cat:'Tasks',  group:'Quests',           type:'bool',  def:1,  vals:[false,true]},
@@ -384,11 +384,11 @@ const OPTIONS = [
 
   // ── Traders ───────────────────────────────────────────────────────────────
   {id:'TradersEnabled',    enumId:128,label:'Trading Enabled',          cat:'Traders',group:'General',          type:'bool',  def:1,  vals:[false,true]},
-  {id:'TraderHours',       enumId:127,label:'Trader Hours',             cat:'Traders',group:'General',          type:'int',   def:0,  vals:[0,1,2,3,4,5,6],                                           labels:['Default','Setting 1','Setting 2','Setting 3','Setting 4','Setting 5','Setting 6']},
+  {id:'TraderHours',       enumId:127,label:'Trader Hours',             cat:'Traders',group:'General',          type:'int',   def:0,  vals:[0,1,2,3,4,5,6],                                           labels:['Default (4a–10p)','Morning (4a–Noon)','Midday (10a–6p)','Evening (4p–10p)','Night (10p–4a)','Closed','Always Open']},
   {id:'TraderProtection',  enumId:132,label:'Trader Protection',        cat:'Traders',group:'General',          type:'int',   def:0,  vals:[0,1,2],           labels:['Yes (Full)','Partial','No']},
   {id:'TraderDialog',      enumId:126,label:'Trading Dialog',           cat:'Traders',group:'General',          type:'bool',  def:1,  vals:[false,true]},
   {id:'GlobalTSModifier',  enumId:65, label:'Global Trader Stage',      cat:'Traders',group:'General',          type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
-  {id:'TraderMaxTier',     enumId:136,label:'Trader Max Tier',          cat:'Traders',group:'General',          type:'int',   def:5,  vals:[1,2,3,4,5,6]},
+  {id:'TraderMaxTier',     enumId:136,label:'Trader Max Tier',          cat:'Traders',group:'General',          type:'int',   def:5,  vals:[1,2,3,4,5,6],      labels:['Tier 1','Tier 2','Tier 3','Tier 4','Tier 5','Tier 6 (Default)']},
   {id:'TraderItemAbundance',enumId:134,label:'Trader Item Count',       cat:'Traders',group:'General',          type:'float', def:2,  vals:[0.25,0.5,1,1.5,2],                                        labels:['25%','50%','Default','150%','200%']},
   {id:'TraderBuyLimit',    enumId:135,label:'Trader Buy Limit',         cat:'Traders',group:'General',          type:'int',   def:3,  vals:[0,1,2,3,4,5,6,7,8,9,10]},
   {id:'TraderResetInterval',enumId:133,label:'Trader Reset',            cat:'Traders',group:'General',          type:'int',   def:0,  vals:[-1,1,2,3,4,5,6,7,14], labels:['Default','1 Day','2 Days','3 Days','4 Days','5 Days','6 Days','7 Days','14 Days']},
