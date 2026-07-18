@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>7D2D Panel — Mods</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/darkly/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    html, body { height: 100%; background-color: #1a1a2e; }
+
+    .app-navbar {
+      background-color: #111827;
+      border-bottom: 2px solid #c0392b;
+      padding: 0.5rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .navbar-brand-text { font-size: 1.15rem; font-weight: 700; color: #fff; letter-spacing: 0.03em; }
+    .navbar-brand-text span { color: #e63946; }
+    .navbar-meta { font-size: 0.8rem; color: #6c757d; margin-left: 0.75rem; }
+
+    .content-area { padding: 1.5rem 2rem; max-width: 1100px; }
+
+    /* ── Pack status card ────────────────────────── */
+    .pack-card {
+      background-color: #1f2b3e;
+      border: 1px solid #2d3f57;
+      border-radius: 8px;
+      padding: 1.1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .pack-card.has-pack { border-color: #2ecc71; }
+    .pack-stat { font-size: 0.8rem; color: #6c757d; }
+    .pack-stat strong { color: #e9ecef; font-weight: 600; }
+    .download-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+    .download-url-box {
+      background: #0d1117;
+      border: 1px solid #2d3f57;
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      font-size: 0.8rem;
+      color: #adb5bd;
+      font-family: monospace;
+      flex: 1;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    /* ── Mod rows ─────────────────────────────────── */
+    .mods-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .mod-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      background-color: #16213e;
+      border: 1px solid #2d3f57;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+    }
+    .mod-row.excluded { opacity: 0.55; }
+    .mod-check { margin-top: 0.2rem; }
+    .mod-body { flex: 1; min-width: 0; }
+    .mod-main { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+    .mod-name { font-weight: 600; font-size: 0.9rem; color: #e9ecef; }
+    .mod-version {
+      font-size: 0.76rem; color: #6c757d; background: #253347;
+      border-radius: 4px; padding: 0.1rem 0.4rem;
+    }
+    .mod-author { font-size: 0.78rem; color: #5a7a9a; }
+    .mod-desc { font-size: 0.78rem; color: #6c757d; margin-top: 0.2rem; line-height: 1.4; }
+    .badge-serveronly {
+      background-color: #2a1a1a; color: #dc3545; border: 1px solid #dc3545;
+      font-size: 0.68rem; padding: 0.15em 0.5em; border-radius: 4px; font-weight: 600;
+    }
+
+    .empty-state { text-align: center; padding: 3rem; color: #4a6080; }
+    .toast-container { z-index: 9999; }
+
+    .generate-bar {
+      position: sticky;
+      bottom: 0;
+      background: #111827;
+      border-top: 1px solid #2d3f57;
+      padding: 0.85rem 1.25rem;
+      margin: 1.5rem -2rem -1.5rem -2rem;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-navbar">
+  <div class="d-flex align-items-center">
+    <span class="navbar-brand-text"><span>7D2D</span> Panel</span>
+    <span class="navbar-meta">{{ server_name }}</span>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/dashboard" class="btn btn-sm btn-outline-secondary"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+    <a href="/config" class="btn btn-sm btn-outline-secondary"><i class="bi bi-sliders me-1"></i>Config</a>
+    <a href="/saves" class="btn btn-sm btn-outline-secondary"><i class="bi bi-hdd me-1"></i>Saves</a>
+    <a href="/admin" class="btn btn-sm btn-outline-secondary"><i class="bi bi-shield-lock me-1"></i>Admin</a>
+    <a href="/sandbox" class="btn btn-sm btn-outline-secondary"><i class="bi bi-code-square me-1"></i>Sandbox</a>
+    <a href="/console" class="btn btn-sm btn-outline-secondary"><i class="bi bi-terminal me-1"></i>Console</a>
+    <a href="/players" class="btn btn-sm btn-outline-secondary"><i class="bi bi-people me-1"></i>Players</a>
+    <a href="/give" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-seam me-1"></i>Give</a>
+    <a href="/teleport" class="btn btn-sm btn-outline-secondary"><i class="bi bi-geo-alt me-1"></i>Teleport</a>
+    <a href="/mods" class="btn btn-sm btn-danger"><i class="bi bi-file-earmark-zip me-1"></i>Mods</a>
+    <a href="/logout" class="btn btn-sm btn-outline-danger ms-1"><i class="bi bi-box-arrow-right me-1"></i>Logout</a>
+  </div>
+</div>
+{% include '_api_warning.html' %}
+
+<div class="content-area">
+
+  <!-- Toast -->
+  <div class="toast-container position-fixed top-0 end-0 p-3">
+    <div id="mainToast" class="toast" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMsg"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <h5 class="mb-1" style="color:#f8f9fa">Mod Pack Manager</h5>
+  <p class="text-muted mb-4" style="font-size:0.85rem">
+    Package the mods players need to install locally into a single mods.zip, hosted from this server as the source of truth.
+  </p>
+
+  <!-- Pack status -->
+  <div id="packCard" class="pack-card{% if pack_info %} has-pack{% endif %}">
+    {%- if pack_info %}
+    <div class="pack-stat"><i class="bi bi-check-circle-fill me-1" style="color:#2ecc71"></i>
+      <strong>{{ pack_info.size }}</strong> · generated <strong>{{ pack_info.generated }}</strong>
+    </div>
+    <div class="download-row">
+      <div class="download-url-box" id="downloadUrlBox">{{ download_url }}</div>
+      <button class="btn btn-sm btn-outline-secondary" onclick="copyDownloadUrl()">
+        <i class="bi bi-clipboard me-1"></i>Copy
+      </button>
+      <a class="btn btn-sm btn-outline-primary" href="{{ download_url }}">
+        <i class="bi bi-download me-1"></i>Download
+      </a>
+    </div>
+    {%- else %}
+    <div class="pack-stat"><i class="bi bi-exclamation-circle me-1"></i>No mod pack has been generated yet.</div>
+    {%- endif %}
+  </div>
+
+  {%- if not mods %}
+  <div class="empty-state">
+    <i class="bi bi-file-earmark-zip" style="font-size:2.5rem"></i>
+    <p class="mt-2">No mods found in the Mods directory.</p>
+  </div>
+  {%- else %}
+
+  <div class="mods-list" id="modsList">
+    {%- for mod in mods %}
+    <div class="mod-row{% if not mod.include_in_pack %} excluded{% endif %}" data-dir="{{ mod.dir }}">
+      <input type="checkbox" class="form-check-input mod-check" data-dir="{{ mod.dir }}"
+             {% if mod.include_in_pack %}checked{% endif %} onchange="toggleMod(this)">
+      <div class="mod-body">
+        <div class="mod-main">
+          <span class="mod-name">{{ mod.display_name }}</span>
+          {%- if mod.version %}<span class="mod-version">v{{ mod.version }}</span>{%- endif %}
+          {%- if mod.author %}<span class="mod-author">by {{ mod.author }}</span>{%- endif %}
+          {%- if mod.server_side_only %}<span class="badge-serveronly">Server-only</span>{%- endif %}
+        </div>
+        {%- if mod.description %}<div class="mod-desc">{{ mod.description }}</div>{%- endif %}
+      </div>
+    </div>
+    {%- endfor %}
+  </div>
+
+  <div class="generate-bar">
+    <span class="text-muted align-self-center me-auto" style="font-size:0.8rem">
+      <span id="selectedCount">{{ mods | selectattr("include_in_pack") | list | length }}</span> of {{ mods | length }} mods selected
+    </span>
+    <button class="btn btn-danger" id="generateBtn" onclick="generatePack()">
+      <i class="bi bi-file-earmark-zip me-1"></i>Generate mods.zip
+    </button>
+  </div>
+
+  {%- endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function toggleMod(cb) {
+  cb.closest('.mod-row').classList.toggle('excluded', !cb.checked);
+  const total = document.querySelectorAll('.mod-check').length;
+  const checked = document.querySelectorAll('.mod-check:checked').length;
+  document.getElementById('selectedCount').textContent = checked;
+}
+
+function generatePack() {
+  const selection = {};
+  document.querySelectorAll('.mod-check').forEach(cb => { selection[cb.dataset.dir] = cb.checked; });
+
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating...';
+
+  fetch('/api/mods/pack/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({selection}),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        showToast(`mods.zip generated (${data.mod_count} mods, ${data.size}).`, 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast('Error: ' + data.error, 'danger');
+      }
+    })
+    .catch(err => showToast('Network error: ' + err.message, 'danger'))
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-file-earmark-zip me-1"></i>Generate mods.zip';
+    });
+}
+
+function copyDownloadUrl() {
+  const text = document.getElementById('downloadUrlBox').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('Download link copied.', 'success'));
+}
+
+function showToast(msg, type) {
+  const el = document.getElementById('mainToast');
+  el.className = `toast align-items-center text-bg-${type} border-0`;
+  document.getElementById('toastMsg').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
+}
+</script>
+</body>
+</html>

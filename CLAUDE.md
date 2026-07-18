@@ -253,11 +253,22 @@ Settings organized via `_SECTIONS` (list of dicts with `id`, `label`, `icon`, `f
 
 ### Installed mods list
 
-`_installed_mods()` scans `SERVERFILES_PATH/Mods/`, reads each subdirectory's `ModInfo.xml`, and returns a list of `{dir, name, display_name, version, author, description, website}` dicts. The Mods section in `config.html` renders this as a read-only list above the settings fields. Uses `ET.parse` — entries that fail to parse fall back to showing the directory name.
+`_installed_mods()` scans `SERVERFILES_PATH/Mods/`, reads each subdirectory's `ModInfo.xml`, and returns a list of `{dir, name, display_name, version, author, description, website, server_side_only, include_in_pack}` dicts. The Mods section in `config.html` renders this as a read-only list above the settings fields. Uses `ET.parse` — entries that fail to parse fall back to showing the directory name.
+
+`server_side_only` reflects the mod's own `<ServerSideOnly value="true">` flag in `ModInfo.xml`. `include_in_pack` defaults to `not server_side_only and dir not in _DEFAULT_EXCLUDED_MODS`, overridden by any saved entry in `mods_pack_config.json` — see Client Mod Pack below.
 
 ### Config API
 - `GET /api/config` — returns merged flat JSON dict from both `sdtdserver.xml` and `platform.cfg`
 - `POST /api/config` — accepts `{"updates": {"Key": "value", ...}}`, routes to the correct file
+
+## Client Mod Pack
+
+`/mods` page lets the admin bundle the client-facing mods into a single `mods.zip` that players download directly from the server — the server is the source of truth, so players don't hunt down individual mod files.
+
+- `_DEFAULT_EXCLUDED_MODS = {"Allocs_CommonFunc", "Allocs_CommandExtensions", "Allocs_WebAndMapRendering", "TFP_CommandExtensions"}` — known server-only tooling (web API, console commands) with no client-relevant content, excluded by default even though their `ModInfo.xml` doesn't set `ServerSideOnly`.
+- Per-mod overrides persist in `MODS_PACK_CONFIG_PATH` (`/config/mods_pack_config.json`, `{dir: bool}`), editable via checkboxes on the `/mods` page.
+- `POST /api/mods/pack/generate` — optionally merges a `{"selection": {dir: bool, ...}}` body into the saved config, then zips every included mod's directory (as `<dir>/...`) into `MODS_PACK_PATH` (`/config/mods.zip`), written atomically via a `.tmp` file + `replace()`.
+- `GET /mods/download` — **no login required** (players aren't panel users); serves `mods.zip` as an attachment. This is the shareable link surfaced on the `/mods` page.
 
 ## Sandbox Editor
 

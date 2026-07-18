@@ -11,13 +11,14 @@ import tarfile
 import threading
 import time
 import collections
+import zipfile
 from datetime import date, datetime
 from functools import wraps
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from flask import (Flask, Response, jsonify, redirect, render_template,
-                   request, session, stream_with_context, url_for)
+                   request, send_file, session, stream_with_context, url_for)
 import requests as _req
 
 app = Flask(__name__)
@@ -31,6 +32,12 @@ WORLDS_ROOT        = Path(os.environ.get("WORLDS_ROOT",    "/gamedata/GeneratedW
 GAMEDATA_PATH      = Path(os.environ.get("GAMEDATA_PATH",  "/gamedata"))
 ALLOCS_URL         = "https://illy.bz/fi/7dtd/server_fixes.tar.gz"
 ALLOCS_MODS        = ["Allocs_CommonFunc", "Allocs_CommandExtensions", "Allocs_WebAndMapRendering"]
+MODS_PACK_CONFIG_PATH = Path(os.environ.get("MODS_PACK_CONFIG_PATH", "/config/mods_pack_config.json"))
+MODS_PACK_PATH        = Path(os.environ.get("MODS_PACK_PATH",        "/config/mods.zip"))
+# Server-only mods (web/console tooling) that ship no client-relevant content,
+# excluded from the client pack by default unless the admin opts them back in.
+_DEFAULT_EXCLUDED_MODS = {"Allocs_CommonFunc", "Allocs_CommandExtensions",
+                          "Allocs_WebAndMapRendering", "TFP_CommandExtensions"}
 TELEPORT_DATA_PATH = Path(os.environ.get("TELEPORT_DATA_PATH", "/config/teleport_data.json"))
 SERVERFILES_PATH   = Path(os.environ.get("SERVERFILES_PATH",   "/serverfiles"))
 PLATFORM_CFG_PATH  = SERVERFILES_PATH / "platform.cfg"
@@ -977,10 +984,25 @@ def dashboard():
 
 # ─── Allocs Server Fixes ──────────────────────────────────────────────────────
 
+def _load_mods_pack_config() -> dict:
+    if MODS_PACK_CONFIG_PATH.exists():
+        try:
+            return json.loads(MODS_PACK_CONFIG_PATH.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_mods_pack_config(cfg: dict):
+    MODS_PACK_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MODS_PACK_CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+
+
 def _installed_mods() -> list:
     mods_dir = SERVERFILES_PATH / "Mods"
     if not mods_dir.is_dir():
         return []
+    pack_cfg = _load_mods_pack_config()
     result = []
     for entry in sorted(mods_dir.iterdir()):
         if not entry.is_dir():
@@ -993,7 +1015,8 @@ def _installed_mods() -> list:
             def _val(tag):
                 node = root.find(tag)
                 return node.get("value", "").strip() if node is not None else ""
-            result.append({
+            server_side_only = _val("ServerSideOnly").lower() == "true"
+            mod = {
                 "dir":          entry.name,
                 "name":         _val("Name"),
                 "display_name": _val("DisplayName") or _val("Name"),
@@ -1001,11 +1024,16 @@ def _installed_mods() -> list:
                 "author":       _val("Author"),
                 "description":  _val("Description"),
                 "website":      _val("Website"),
-            })
+                "server_side_only": server_side_only,
+            }
         except Exception:
-            result.append({"dir": entry.name, "name": entry.name,
-                           "display_name": entry.name, "version": "",
-                           "author": "", "description": "", "website": ""})
+            mod = {"dir": entry.name, "name": entry.name,
+                   "display_name": entry.name, "version": "",
+                   "author": "", "description": "", "website": "",
+                   "server_side_only": False}
+        default_include = not mod["server_side_only"] and mod["dir"] not in _DEFAULT_EXCLUDED_MODS
+        mod["include_in_pack"] = pack_cfg.get(mod["dir"], default_include)
+        result.append(mod)
     return result
 
 
@@ -1060,6 +1088,61 @@ def api_allocs_uninstall():
             if d.exists():
                 shutil.rmtree(str(d))
     return jsonify({"ok": True, **_allocs_status()})
+
+
+# ─── Client Mod Pack ──────────────────────────────────────────────────────────
+
+def _mods_pack_info():
+    if not MODS_PACK_PATH.exists():
+        return None
+    st = MODS_PACK_PATH.stat()
+    return {
+        "size":      _fmt_size(st.st_size),
+        "generated": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+@app.route("/mods")
+@login_required
+def mods_page():
+    return render_template("mods.html", mods=_installed_mods(), pack_info=_mods_pack_info(),
+                           download_url=url_for("mods_download", _external=True))
+
+
+@app.route("/api/mods/pack/generate", methods=["POST"])
+@login_required
+def api_mods_pack_generate():
+    body = request.get_json(silent=True) or {}
+    selection = body.get("selection")
+    if selection is not None:
+        cfg = _load_mods_pack_config()
+        cfg.update({k: bool(v) for k, v in selection.items()})
+        _save_mods_pack_config(cfg)
+
+    mods_dir = SERVERFILES_PATH / "Mods"
+    included = [m for m in _installed_mods() if m["include_in_pack"]]
+    if not included:
+        return jsonify({"error": "No mods selected for the client pack"}), 400
+    try:
+        MODS_PACK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = MODS_PACK_PATH.with_suffix(".tmp")
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for mod in included:
+                mod_path = mods_dir / mod["dir"]
+                for file in mod_path.rglob("*"):
+                    if file.is_file():
+                        zf.write(file, arcname=str(Path(mod["dir"]) / file.relative_to(mod_path)))
+        tmp_path.replace(MODS_PACK_PATH)
+        return jsonify({"ok": True, "mod_count": len(included), **_mods_pack_info()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/mods/download")
+def mods_download():
+    if not MODS_PACK_PATH.exists():
+        return "No mod pack has been generated yet.", 404
+    return send_file(str(MODS_PACK_PATH), as_attachment=True, download_name="mods.zip")
 
 
 # ─── Inventory ─────────────────────────────────────────────────────────────────
