@@ -1303,13 +1303,16 @@ def api_run_command():
 # ─── Config ───────────────────────────────────────────────────────────────────
 
 def _available_worlds():
-    """Scan installed server files for world directories; fall back to known defaults."""
+    """Scan installed server files + GeneratedWorlds for world directories; fall back to known defaults."""
     worlds_dir = SERVERFILES_PATH / "Data" / "Worlds"
     if worlds_dir.exists():
         found = sorted(d.name for d in worlds_dir.iterdir() if d.is_dir() and d.name != "Empty")
     else:
         found = ["Navezgane", "Pregen06k01", "Pregen06k02", "Pregen08k01", "Pregen08k02"]
-    return ["RWG"] + found
+    custom = []
+    if WORLDS_ROOT.exists():
+        custom = sorted(d.name for d in WORLDS_ROOT.iterdir() if d.is_dir())
+    return ["RWG"] + found + custom
 
 
 @app.route("/config")
