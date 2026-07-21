@@ -219,15 +219,13 @@
         <i class="bi {{ 'bi-cpu' if is_rwg else 'bi-map' }}"></i>
         {{ world }}
         {%- if is_rwg %}
-        <span class="badge-rwg">RWG</span>
+        <span class="badge-rwg">Custom Map</span>
         {%- endif %}
       </div>
-      {%- if is_rwg %}
       <button class="btn btn-sm btn-outline-danger"
         onclick='confirmDeleteWorld({{ world | tojson }})'>
         <i class="bi bi-trash3 me-1"></i>Delete World
       </button>
-      {%- endif %}
     </div>
 
     <div class="world-body">
@@ -346,15 +344,23 @@ function confirmDelete(world, save, isCurrent) {
 // ── Delete world ──────────────────────────────────────────────────────────────
 function confirmDeleteWorld(world) {
   document.getElementById('confirmTitle').textContent = `Delete World — ${world}`;
-  document.getElementById('confirmBtn').textContent = 'Delete World';
+  document.getElementById('confirmBtn').textContent = 'Delete';
   document.getElementById('confirmBtn').className = 'btn btn-danger';
 
   document.getElementById('confirmBody').innerHTML = `
-    <p>Permanently delete the generated world <strong>${world}</strong> and <strong>all of its saves</strong>. This cannot be undone.</p>
-    <div class="danger-zone"><i class="bi bi-exclamation-triangle-fill me-1"></i>
-      The world terrain will be gone. If the server still references this world it will attempt to regenerate it on next launch.</div>`;
+    <p>Permanently delete <strong>all saves</strong> under <strong>${world}</strong>. This cannot be undone.</p>
+    <div class="form-check danger-zone">
+      <input class="form-check-input" type="checkbox" id="alsoDeleteMapFiles" style="margin-top:0.2rem">
+      <label class="form-check-label" for="alsoDeleteMapFiles">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>Also delete the map files</strong> from GeneratedWorlds.
+        Only check this if <strong>${world}</strong> was randomly generated (RWG) and can be recreated from its seed.
+        If this is a hand-uploaded custom map, checking this box will <strong>permanently destroy it</strong> —
+        there is no backup on this server and it cannot be recovered.
+      </label>
+    </div>`;
 
-  pendingAction = () => doAction('delete_world', world, null);
+  pendingAction = () => doAction('delete_world', world, null, document.getElementById('alsoDeleteMapFiles').checked);
   modal.show();
 }
 
@@ -363,23 +369,26 @@ document.getElementById('confirmBtn').addEventListener('click', () => {
   if (pendingAction) pendingAction();
 });
 
-function doAction(action, world, save) {
+function doAction(action, world, save, deleteWorldFiles) {
   modal.hide();
   const btn = document.getElementById('confirmBtn');
   btn.disabled = true;
 
+  const body = {world, save};
+  if (action === 'delete_world') body.delete_world_files = !!deleteWorldFiles;
+
   fetch(`/api/saves/${action}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({world, save}),
+    body: JSON.stringify(body),
   })
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
         showToast(
-          action === 'wipe'         ? 'Save wiped successfully.' :
-          action === 'delete'       ? 'Save deleted.' :
-                                      'World deleted.',
+          action === 'wipe'   ? 'Save wiped successfully.' :
+          action === 'delete' ? 'Save deleted.' :
+          data.world_files_deleted ? 'World saves and map files deleted.' : 'World saves deleted (map files kept).',
           'success'
         );
         setTimeout(() => location.reload(), 800);

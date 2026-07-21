@@ -1416,11 +1416,22 @@ def saves():
 
 _WIPE_KEEP = {"GeneratedWorld", "map"}
 
+def _save_path(body: dict) -> Path:
+    return SAVES_ROOT / body.get("world", "") / body.get("save", "")
+
+def _under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 @app.route("/api/saves/wipe", methods=["POST"])
 @login_required
 def api_saves_wipe():
-    path = Path((request.get_json() or {}).get("path", ""))
-    if not path.is_dir() or not str(path).startswith(str(SAVES_ROOT)):
+    path = _save_path(request.get_json() or {})
+    if not path.is_dir() or not _under(path, SAVES_ROOT):
         return jsonify({"error": "Invalid path"}), 400
     for item in path.iterdir():
         if item.name not in _WIPE_KEEP:
@@ -1431,24 +1442,28 @@ def api_saves_wipe():
 @app.route("/api/saves/delete", methods=["POST"])
 @login_required
 def api_saves_delete():
-    path = Path((request.get_json() or {}).get("path", ""))
-    if not path.is_dir() or not str(path).startswith(str(SAVES_ROOT)):
+    path = _save_path(request.get_json() or {})
+    if not path.is_dir() or not _under(path, SAVES_ROOT):
         return jsonify({"error": "Invalid path"}), 400
     shutil.rmtree(path)
     return jsonify({"ok": True})
 
 
-@app.route("/api/saves/delete-world", methods=["POST"])
+@app.route("/api/saves/delete_world", methods=["POST"])
 @login_required
 def api_saves_delete_world():
-    body      = request.get_json() or {}
-    save_path = Path(body.get("save_path", ""))
-    world_path = Path(body.get("world_path", ""))
-    if save_path.is_dir() and str(save_path).startswith(str(SAVES_ROOT)):
+    body       = request.get_json() or {}
+    world      = body.get("world", "")
+    delete_world_files = bool(body.get("delete_world_files", False))
+    save_path  = SAVES_ROOT / world
+    world_path = WORLDS_ROOT / world
+    if save_path.is_dir() and _under(save_path, SAVES_ROOT):
         shutil.rmtree(save_path)
-    if world_path.is_dir() and str(world_path).startswith(str(WORLDS_ROOT)):
+    # Map files under GeneratedWorlds may be a hand-uploaded custom map with no
+    # backup, not something regenerable from a seed — only remove on explicit opt-in.
+    if delete_world_files and world_path.is_dir() and _under(world_path, WORLDS_ROOT):
         shutil.rmtree(world_path)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "world_files_deleted": delete_world_files})
 
 
 # ─── Admin ────────────────────────────────────────────────────────────────────
